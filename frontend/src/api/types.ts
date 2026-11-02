@@ -1,0 +1,111 @@
+export interface Project {
+  id: string;
+  name: string;
+  client_name?: string | null;
+  brief: string;
+  status: string;
+  created_at: string;
+  due_at?: string | null;
+  settings_json: Record<string, any>;
+}
+
+export interface Task {
+  id: string;
+  project_id: string;
+  parent_id?: string | null;
+  root_id?: string | null;
+  depth: number;
+  title: string;
+  description: string;
+  original_goal: string;
+  acceptance_criteria_json: string[];
+  assignee_agent_id?: string | null;
+  creator_agent_id?: string | null;
+  reviewer_agent_id?: string | null;
+  status: 'pending' | 'assigned' | 'in_progress' | 'blocked' | 'integrating' | 'in_review' | 'revision_requested' | 'done' | 'failed' | 'cancelled';
+  attempt: number;
+  max_attempts: number;
+  depends_on_json: string[];
+  deliverable_artifact_id?: string | null;
+  review_notes_json: string[];
+  token_budget: number;
+  tokens_used: number;
+  priority: number;
+  created_at: string;
+  started_at?: string | null;
+  completed_at?: string | null;
+  error?: string | null;
+}
+
+export interface TaskTreeNode extends Task {
+  children: TaskTreeNode[];
+}
+
+export interface Agent {
+  id: string;
+  role_key: string;
+  display_name: string;
+  department: string;
+  level: number;
+  reports_to_agent_id?: string | null;
+  model_tier: string;
+  system_prompt: string;
+  tools_json: string[];
+  status: 'active' | 'retired';
+  sprite_json: {
+    sprite_id?: string;
+    skin_tone?: number;
+    hair_style?: number;
+    shirt_color?: string;
+    pants_color?: string;
+    accessory?: string;
+    badge?: string;
+  };
+  created_at: string;
+}
+
+export interface Artifact {
+  id: string;
+  project_id: string;
+  task_id?: string | null;
+  kind: 'text' | 'markdown' | 'code' | 'file' | 'json' | 'image_svg';
+  path: string;
+  summary: string;
+  created_by_agent_id?: string | null;
+  version: number;
+  created_at: string;
+  content?: string;
+}
+
+export interface Approval {
+  id: string;
+  project_id: string;
+  task_id?: string | null;
+  kind: string;
+  request_json: Record<string, any>;
+  status: 'pending' | 'approved' | 'rejected';
+  decided_at?: string | null;
+}
+
+export interface EventPayload {
+  id: number;
+  ts: string;
+  type: string;
+  project_id?: string | null;
+  task_id?: string | null;
+  agent_id?: string | null;
+  payload: Record<string, any>;
+}
+
+export interface UsageSummary {
+  total_calls: number;
+  total_prompt_tokens: number;
+  total_completion_tokens: number;
+  total_cost_estimate: number;
+  models_daily_usage: Array<{
+    model: string;
+    day: string;
+    requests_count: number;
+    tokens_count: number;
+  }>;
+}
