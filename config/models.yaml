@@ -1,0 +1,42 @@
+default_provider: groq
+providers:
+  groq:
+    base_url: https://api.groq.com/openai/v1
+    api_key_env: GROQ_API_KEY
+  mock:
+    base_url: mock://internal
+    api_key_env: MOCK_API_KEY
+
+tiers:
+  fast:
+    provider: groq
+    model: llama-3.1-8b-instant
+    fallbacks:
+      - llama-3.3-70b-versatile
+  smart:
+    provider: groq
+    model: llama-3.3-70b-versatile
+    fallbacks:
+      - llama-3.1-8b-instant
+  premium:
+    provider: groq
+    model: llama-3.3-70b-versatile
+    fallbacks:
+      - llama-3.1-8b-instant
+
+limits:
+  llama-3.1-8b-instant:
+    rpm: 30
+    tpm: 6000
+    rpd: 1000
+    tpd: 100000
+  llama-3.3-70b-versatile:
+    rpm: 30
+    tpm: 6000
+    rpd: 1000
+    tpd: 100000
+  mock-model:
+    rpm: 5000
+    tpm: 10000000
+    rpd: 1000000
+    tpd: 100000000

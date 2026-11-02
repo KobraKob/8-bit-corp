@@ -1,0 +1,12 @@
+max_depth: 4
+max_children: 8
+max_attempts: 3
+max_revisions: 2
+tool_step_cap: 8
+task_token_budget: 25000
+global_concurrency: 2
+wip_limit_per_agent: 1
+approval_gates:
+  external_side_effects: true
+  hire_dynamic_agents_threshold: 5
+  freelance_client_ready: true
