@@ -148,7 +148,7 @@ export const ProjectIntakeModal: React.FC<{ isOpen: boolean; onClose: () => void
             <button
               type="submit"
               disabled={isSubmitting || networkStatus === 'offline'}
-              className="px-4 py-1.5 rounded bg-sky-600 hover:bg-sky-500 text-white font-medium text-xs flex items-center gap-1.5 transition-all"
+              className="px-4 py-1.5 rounded bg-sky-600 hover:bg-sky-500 text-white font-medium text-xs flex items-center gap-1.5 transition-colors"
             >
               <Sparkles size={13} />
               {networkStatus === 'offline' ? 'Offline' : isSubmitting ? 'Sending to CEO...' : 'Submit to CEO'}
