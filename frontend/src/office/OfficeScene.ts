@@ -213,8 +213,9 @@ export class OfficeScene extends Phaser.Scene {
         agent,
         container,
         sprite,
-        state: 'working',
+        state: 'idle',
         desk,
+        phase: Math.random() * Math.PI * 2,
       });
     }
   }
