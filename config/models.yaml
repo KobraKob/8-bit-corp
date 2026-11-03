@@ -10,21 +10,42 @@ providers:
 tiers:
   fast:
     provider: groq
-    model: llama-3.1-8b-instant
+    model: openai/gpt-oss-20b
     fallbacks:
-      - llama-3.3-70b-versatile
+      - qwen/qwen3.8-27b
+      - openai/gpt-oss-120b
+      - llama-3.1-8b-instant
   smart:
     provider: groq
-    model: llama-3.3-70b-versatile
+    model: openai/gpt-oss-120b
     fallbacks:
-      - llama-3.1-8b-instant
+      - qwen/qwen3.8-27b
+      - openai/gpt-oss-20b
+      - llama-3.3-70b-versatile
   premium:
     provider: groq
-    model: llama-3.3-70b-versatile
+    model: openai/gpt-oss-120b
     fallbacks:
-      - llama-3.1-8b-instant
+      - qwen/qwen3.8-27b
+      - openai/gpt-oss-20b
+      - llama-3.3-70b-versatile
 
 limits:
+  openai/gpt-oss-20b:
+    rpm: 30
+    tpm: 6000
+    rpd: 1000
+    tpd: 100000
+  openai/gpt-oss-120b:
+    rpm: 30
+    tpm: 6000
+    rpd: 1000
+    tpd: 100000
+  qwen/qwen3.8-27b:
+    rpm: 30
+    tpm: 6000
+    rpd: 1000
+    tpd: 100000
   llama-3.1-8b-instant:
     rpm: 30
     tpm: 6000
