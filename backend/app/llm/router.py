@@ -41,21 +41,29 @@ class LLMRouter:
             self.providers["mock"] = self.override_provider
             return
 
-        # Setup Mock Provider
-        self.providers["mock"] = MockProvider()
-
-        # Setup Groq Provider
-        groq_cfg = self.settings.models.providers.get("groq")
-        if groq_cfg:
-            api_key = os.getenv(groq_cfg.api_key_env, "")
-            self.providers["groq"] = GroqProvider(base_url=groq_cfg.base_url, api_key=api_key)
+        # Build every configured provider through the shared OpenAI-compatible adapter.
+        for name, provider_cfg in self.settings.models.providers.items():
+            if name == "mock":
+                self.providers[name] = MockProvider()
+                continue
+            api_key = os.getenv(provider_cfg.api_key_env, "")
+            if name == "groq":
+                self.providers[name] = GroqProvider(base_url=provider_cfg.base_url, api_key=api_key)
+            else:
+                self.providers[name] = GenericOpenAICompatProvider(
+                    base_url=provider_cfg.base_url,
+                    api_key=api_key,
+                )
 
     def get_provider(self, name: str) -> LLMProvider:
         if self.override_provider:
             return self.override_provider
         if name in self.providers:
             return self.providers[name]
-        return self.providers.get("mock", MockProvider())
+        raise ValueError(
+            f"LLM provider '{name}' is not configured. Add it to config/models.yaml; "
+            "the router will not silently substitute the mock provider."
+        )
 
     async def execute_chat(
         self,

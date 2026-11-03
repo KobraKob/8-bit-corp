@@ -85,7 +85,11 @@ class AppSettings(BaseModel):
     environment: str = os.getenv("ENVIRONMENT", "development")
     port: int = int(os.getenv("PORT", "8000"))
     host: str = os.getenv("HOST", "0.0.0.0")
-    cors_origins: List[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
+    cors_origins: List[str] = Field(default_factory=lambda: [
+        origin.strip()
+        for origin in os.getenv("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",")
+        if origin.strip()
+    ])
     database_url: str = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///pixel_corp.sqlite")
     workspaces_root: Path = PROJECT_ROOT / os.getenv("WORKSPACES_ROOT", "workspaces")
     models: ModelsConfig

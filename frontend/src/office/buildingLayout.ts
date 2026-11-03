@@ -78,8 +78,7 @@ export function generateBuildingLayout(agents: Agent[]): BuildingLayout {
         facing: 'down',
       });
 
-      // Mark desk as obstacle
-      collisionMatrix[currentY][currentX] = 1;
+      // Desk tiles remain walkable: agents stand here and use them as path endpoints.
 
       currentX += 4;
       if (currentX > def.x + def.w - 4) {

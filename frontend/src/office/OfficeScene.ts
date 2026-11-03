@@ -23,7 +23,8 @@ export class OfficeScene extends Phaser.Scene {
   private isPanning = false;
   private panStartX = 0;
   private panStartY = 0;
-  private lastHandledEventIndex = -1;
+  private handledEventIds = new Set<number>();
+  private unsubscribeStore?: () => void;
 
   constructor() {
     super({ key: 'OfficeScene' });
@@ -59,15 +60,14 @@ export class OfficeScene extends Phaser.Scene {
 
     this.setupCameraControls();
 
-    // Subscribe to state events
-    useAppStore.subscribe((state) => {
-      // Check if new agents were added
-      if (state.agents.length !== this.agentSprites.size) {
-        this.syncAgents(state.agents);
-      }
-      // Process recent events
+    // Ignore historical events when the scene first mounts.
+    this.handledEventIds = new Set(useAppStore.getState().events.map((event) => event.id).sort((a, b) => a - b));
+    this.unsubscribeStore = useAppStore.subscribe((state) => {
+      this.syncAgents(state.agents);
       this.processNewEvents(state.events);
     });
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.unsubscribeStore?.());
+    this.events.once(Phaser.Scenes.Events.DESTROY, () => this.unsubscribeStore?.());
   }
 
   private drawBuilding() {
@@ -195,16 +195,23 @@ export class OfficeScene extends Phaser.Scene {
   }
 
   private syncAgents(agents: Agent[]) {
-    for (const a of agents) {
-      if (!this.agentSprites.has(a.id)) {
-        this.spawnAgents([a]);
+    const activeIds = new Set(agents.filter((agent) => agent.status === 'active').map((agent) => agent.id));
+    for (const [id, entry] of this.agentSprites) {
+      if (!activeIds.has(id)) {
+        entry.container.destroy(true);
+        this.agentSprites.delete(id);
+      }
+    }
+    for (const agent of agents) {
+      if (agent.status === 'active' && !this.agentSprites.has(agent.id)) {
+        this.spawnAgents([agent]);
       }
     }
   }
 
   private setupCameraControls() {
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-      if (pointer.rightButtonDown() || pointer.middleButtonDown() || pointer.leftButtonDown()) {
+      if (pointer.rightButtonDown() || pointer.middleButtonDown()) {
         this.isPanning = true;
         this.panStartX = pointer.x;
         this.panStartY = pointer.y;
@@ -242,11 +249,15 @@ export class OfficeScene extends Phaser.Scene {
     }
 
     const bubble = this.add.image(0, -22, texture).setOrigin(0.5);
-    entry.container.add(bubble);
-    entry.bubbleContainer = this.add.container(0, 0, [bubble]);
+    const bubbleContainer = this.add.container(0, 0, [bubble]);
+    entry.bubbleContainer = bubbleContainer;
+    entry.container.add(bubbleContainer);
 
     this.time.delayedCall(durationMs, () => {
-      bubble.destroy();
+      if (entry.bubbleContainer === bubbleContainer) {
+        bubbleContainer.destroy(true);
+        entry.bubbleContainer = undefined;
+      }
     });
   }
 
@@ -296,31 +307,35 @@ export class OfficeScene extends Phaser.Scene {
   }
 
   private processNewEvents(events: Array<{ id: number; type: string; agent_id?: string | null; payload: any }>) {
-    if (!events || events.length === 0) return;
+    if (!events?.length) return;
+    // Store is newest-first. Process every unseen event chronologically.
+    const unseen = events
+      .filter((event) => !this.handledEventIds.has(event.id))
+      .sort((a, b) => a.id - b.id);
 
-    const latest = events[0];
-    if (latest.id <= this.lastHandledEventIndex) return;
-    this.lastHandledEventIndex = latest.id;
-
-    // React to event types
-    if (latest.type === 'agent.thinking' && latest.agent_id) {
-      this.showAgentBubble(latest.agent_id, 'bubble_thinking');
-    } else if (latest.type === 'task.blocked' && latest.agent_id) {
-      this.showAgentBubble(latest.agent_id, 'bubble_blocked', 5000);
-    } else if (latest.type === 'project.completed') {
-      this.triggerConfetti();
-    } else if (latest.type === 'task.delegated' && latest.agent_id && latest.payload?.to_agent_id) {
-      // Delegator walks to assignee desk to deliver paper
-      const delegator = latest.agent_id;
-      const targetAgent = this.agentSprites.get(latest.payload.to_agent_id);
-      if (targetAgent?.desk) {
-        this.walkAgentTo(delegator, targetAgent.desk.tileX, targetAgent.desk.tileY, () => {
-          // Return to own desk
-          const delegatorEntry = this.agentSprites.get(delegator);
-          if (delegatorEntry?.desk) {
-            this.walkAgentTo(delegator, delegatorEntry.desk.tileX, delegatorEntry.desk.tileY);
-          }
-        });
+    for (const event of unseen) {
+      this.handledEventIds.add(event.id);
+      if (this.handledEventIds.size > 1000) {
+        const oldest = this.handledEventIds.values().next().value;
+        if (oldest !== undefined) this.handledEventIds.delete(oldest);
+      }
+      if (event.type === 'agent.thinking' && event.agent_id) {
+        this.showAgentBubble(event.agent_id, 'bubble_thinking');
+      } else if ((event.type === 'task.blocked' || event.type === 'task.failed') && event.agent_id) {
+        this.showAgentBubble(event.agent_id, 'bubble_blocked', 5000);
+      } else if (event.type === 'project.completed') {
+        this.triggerConfetti();
+      } else if (event.type === 'task.delegated' && event.agent_id && event.payload?.to_agent_id) {
+        const delegator = event.agent_id;
+        const targetAgent = this.agentSprites.get(event.payload.to_agent_id);
+        if (targetAgent?.desk) {
+          this.walkAgentTo(delegator, targetAgent.desk.tileX, targetAgent.desk.tileY, () => {
+            const delegatorEntry = this.agentSprites.get(delegator);
+            if (delegatorEntry?.desk) {
+              this.walkAgentTo(delegator, delegatorEntry.desk.tileX, delegatorEntry.desk.tileY);
+            }
+          });
+        }
       }
     }
   }

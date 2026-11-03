@@ -32,14 +32,14 @@ class Scheduler:
         """Crash safety: re-queue tasks stranded in_progress or integrating back to assigned."""
         async with async_session_factory() as session:
             stmt = select(Task).where(
-                Task.status.in_([TaskStatus.IN_PROGRESS.value, TaskStatus.INTEGRATING.value])
+                Task.status.in_([TaskStatus.IN_PROGRESS.value, TaskStatus.INTEGRATING.value, TaskStatus.REVIEWING.value])
             )
             res = await session.execute(stmt)
             stranded = res.scalars().all()
             if stranded:
                 logger.info(f"Crash recovery: found {len(stranded)} stranded tasks. Re-queuing to assigned...")
                 for t in stranded:
-                    t.status = TaskStatus.ASSIGNED.value
+                    t.status = TaskStatus.IN_REVIEW.value if t.status == TaskStatus.REVIEWING.value else TaskStatus.ASSIGNED.value
                 await session.commit()
 
     async def start(self) -> None:
@@ -68,6 +68,7 @@ class Scheduler:
 
     async def cancel_task_subtree(self, task_id: str) -> None:
         """Cancel a task and all its recursive descendant subtasks."""
+        cancelled = []
         async with async_session_factory() as session:
             # Recursive descent
             to_cancel = [task_id]
@@ -82,12 +83,7 @@ class Scheduler:
                 task = await session.get(Task, curr_id)
                 if task and not TaskFSM.is_terminal(TaskStatus(task.status)):
                     task.status = TaskStatus.CANCELLED.value
-                    await event_bus.emit(
-                        event_type=EventType.TASK_FAILED,
-                        project_id=task.project_id,
-                        task_id=task.id,
-                        payload={"reason": "Cancelled by user"},
-                    )
+                    cancelled.append((task.project_id, task.id, task.assignee_agent_id))
 
                 # Find children
                 child_stmt = select(Task.id).where(Task.parent_id == curr_id)
@@ -97,53 +93,70 @@ class Scheduler:
 
             await session.commit()
 
+        for project_id, cancelled_task_id, agent_id in cancelled:
+            await event_bus.emit(
+                event_type=EventType.TASK_CANCELLED,
+                project_id=project_id,
+                task_id=cancelled_task_id,
+                agent_id=agent_id,
+                payload={"reason": "Cancelled by user"},
+            )
+
     async def _fetch_ready_tasks(self) -> List[Task]:
         """Fetch all tasks that are currently assigned and whose dependencies are completely done."""
         async with async_session_factory() as session:
             stmt = select(Task).where(
-                Task.status == TaskStatus.ASSIGNED.value,
+                Task.status.in_([TaskStatus.ASSIGNED.value, TaskStatus.REVISION_REQUESTED.value, TaskStatus.IN_REVIEW.value]),
             )
-            res = await session.execute(stmt)
-            assigned_tasks = res.scalars().all()
-
+            queued_tasks = (await session.execute(stmt)).scalars().all()
             ready: List[Task] = []
-            for t in assigned_tasks:
-                if t.project_id in self._paused_projects:
+            for task in queued_tasks:
+                if task.project_id in self._paused_projects or task.id in self._active_tasks:
                     continue
-                if t.id in self._active_tasks:
+                # Dependencies are stable task IDs only. Titles are not unique identifiers.
+                dependencies = list(dict.fromkeys(task.depends_on_json or []))
+                if not dependencies:
+                    ready.append(task)
                     continue
-
-                # Check dependencies
-                deps = t.depends_on_json or []
-                if not deps:
-                    ready.append(t)
-                else:
-                    dep_stmt = select(Task.status).where(
-                        (Task.id.in_(deps)) | (Task.title.in_(deps)),
-                        Task.project_id == t.project_id,
-                    )
-                    dep_res = await session.execute(dep_stmt)
-                    statuses = dep_res.scalars().all()
-                    # All declared dependencies must be done
-                    if len(statuses) >= len(deps) and all(s == TaskStatus.DONE.value for s in statuses):
-                        ready.append(t)
-
-            # Sort: Depth-first bias (higher depth first), then priority (lower number is higher priority), then created_at
-            ready.sort(key=lambda t: (-t.depth, t.priority, t.created_at))
+                dep_stmt = select(Task.id, Task.status).where(
+                    Task.id.in_(dependencies),
+                    Task.project_id == task.project_id,
+                )
+                dep_rows = (await session.execute(dep_stmt)).all()
+                dependency_statuses = {dependency_id: status for dependency_id, status in dep_rows}
+                if len(dependency_statuses) == len(dependencies) and all(
+                    dependency_statuses[dependency_id] == TaskStatus.DONE.value
+                    for dependency_id in dependencies
+                ):
+                    ready.append(task)
+            ready.sort(key=lambda task: (-task.depth, task.priority, task.created_at))
             return ready
 
     async def _process_task(self, task_id: str) -> None:
         self._active_tasks.add(task_id)
         try:
             async with async_session_factory() as session:
-                task = await session.get(Task, task_id)
-                if not task or task.status != TaskStatus.ASSIGNED.value:
+                # Read the queue state, then claim atomically. A failed claim means
+                # another worker already owns this task.
+                queued_status = await session.scalar(select(Task.status).where(Task.id == task_id))
+                if queued_status == TaskStatus.IN_REVIEW.value:
+                    target_status = TaskStatus.REVIEWING.value
+                else:
+                    target_status = TaskStatus.IN_PROGRESS.value
+                claim = await session.execute(
+                    update(Task)
+                    .where(
+                        Task.id == task_id,
+                        Task.status.in_([TaskStatus.ASSIGNED.value, TaskStatus.REVISION_REQUESTED.value, TaskStatus.IN_REVIEW.value]),
+                    )
+                    .values(status=target_status, started_at=datetime.now(timezone.utc))
+                )
+                if claim.rowcount != 1:
                     return
-
-                # Mark in_progress
-                task.status = TaskStatus.IN_PROGRESS.value
-                task.started_at = datetime.now(timezone.utc)
                 await session.commit()
+                task = await session.get(Task, task_id)
+                if not task:
+                    return
                 proj_id = task.project_id
                 t_id = task.id
                 agt_id = task.assignee_agent_id
@@ -158,10 +171,23 @@ class Scheduler:
                 payload={"title": t_title, "depth": t_depth},
             )
 
-            # Case A: Root CEO task triage
-            if task.depth == 0 and task.parent_id is None:
+            # A review interrupted by a process restart can be safely resumed.
+            if queued_status == TaskStatus.IN_REVIEW.value:
+                report = await ReviewEngine.review_task(task.id)
+                if report.decision.lower().strip() == "approve" and task.parent_id:
+                    await IntegrationEngine.integrate_parent_task(task.parent_id)
+                return
+
+            # CEO root: do not duplicate an already-created delegation tree after recovery.
+            if task.depth == 0 and task.parent_id is None and queued_status == TaskStatus.ASSIGNED.value:
                 async with async_session_factory() as session:
+                    existing_child = await session.scalar(
+                        select(Task.id).where(Task.parent_id == task.id).limit(1)
+                    )
                     ceo = await session.get(Agent, task.assignee_agent_id)
+                if existing_child:
+                    await IntegrationEngine.integrate_parent_task(task.id)
+                    return
                 triage_plan = await CEOTriage.triage_project(task, ceo)
 
                 # Delegate objectives
@@ -183,6 +209,17 @@ class Scheduler:
                 )
                 return
 
+            # Recovered manager tasks with existing children should resume integration,
+            # not ask the LLM to delegate the same work packages again.
+            if queued_status == TaskStatus.ASSIGNED.value:
+                async with async_session_factory() as session:
+                    existing_child = await session.scalar(
+                        select(Task.id).where(Task.parent_id == task.id).limit(1)
+                    )
+                if existing_child:
+                    await IntegrationEngine.integrate_parent_task(task.id)
+                    return
+
             # Ensure assignee_agent_id is present
             assignee_id = task.assignee_agent_id
             if not assignee_id:
@@ -192,10 +229,15 @@ class Scheduler:
                     t = await session.get(Task, task.id)
                     t.assignee_agent_id = assignee_id
                     await session.commit()
+                    task.assignee_agent_id = assignee_id
 
             # Case B: Standard worker agent execution turn
             runtime = AgentRuntime(task_id=task.id, agent_id=assignee_id)
             result = await runtime.run_turn()
+            async with async_session_factory() as session:
+                current_task = await session.get(Task, task.id)
+                if not current_task or current_task.status == TaskStatus.CANCELLED.value:
+                    return
             terminal_action = result.get("terminal_action")
 
             if terminal_action:
@@ -235,10 +277,8 @@ class Scheduler:
                     )
 
                     # Trigger formal review
-                    await ReviewEngine.review_task(task.id)
-
-                    # If approved, check if parent is ready for integration
-                    if task.parent_id:
+                    report = await ReviewEngine.review_task(task.id)
+                    if report.decision.lower().strip() == "approve" and task.parent_id:
                         await IntegrationEngine.integrate_parent_task(task.parent_id)
 
                 elif tool_name == "report_blocked":
@@ -259,13 +299,16 @@ class Scheduler:
             logger.error(f"Error processing task {task_id}: {exc}", exc_info=True)
             async with async_session_factory() as session:
                 t = await session.get(Task, task_id)
-                if t:
-                    t.attempt += 1
-                    if t.attempt >= t.max_attempts:
-                        t.status = TaskStatus.FAILED.value
-                        t.error = str(exc)
+                if t and not TaskFSM.is_terminal(TaskStatus(t.status)):
+                    if t.status == TaskStatus.REVIEWING.value:
+                        t.status = TaskStatus.IN_REVIEW.value
                     else:
-                        t.status = TaskStatus.ASSIGNED.value  # retry
+                        t.attempt += 1
+                        if t.attempt >= t.max_attempts:
+                            t.status = TaskStatus.FAILED.value
+                            t.error = str(exc)
+                        else:
+                            t.status = TaskStatus.ASSIGNED.value  # retry
                     await session.commit()
         finally:
             self._active_tasks.discard(task_id)
@@ -279,6 +322,7 @@ class Scheduler:
                 if available_slots > 0:
                     ready_tasks = await self._fetch_ready_tasks()
                     for task in ready_tasks[:available_slots]:
+                        self._active_tasks.add(task.id)
                         asyncio.create_task(self._process_task(task.id))
 
                 await asyncio.sleep(0.5)

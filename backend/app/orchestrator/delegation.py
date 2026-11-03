@@ -93,11 +93,11 @@ class DelegationEngine:
             # Map from title or temp_id to new real task ID
             title_to_id: Dict[str, str] = {}
             for item in subtasks_data:
-                key = item.get("id") or item.get("title")
+                key = item.get("id") or item.get("temp_id") or item.get("title")
                 title_to_id[key] = generate_id("tsk")
 
             for item in subtasks_data:
-                sub_id = title_to_id[item.get("id") or item.get("title")]
+                sub_id = title_to_id[item.get("id") or item.get("temp_id") or item.get("title")]
                 role_key = item.get("role_key")
                 dept = item.get("department")
 

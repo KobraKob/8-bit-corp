@@ -50,7 +50,7 @@ export const LiveActivityHUD: React.FC = () => {
   const totalTasks = flatTasks.length;
   const doneTasks = flatTasks.filter((t) => t.status === 'done').length;
   const inProgressTasks = flatTasks.filter(
-    (t) => t.status === 'in_progress' || t.status === 'integrating' || t.status === 'in_review'
+    (t) => t.status === 'in_progress' || t.status === 'integrating' || t.status === 'in_review' || t.status === 'reviewing'
   );
   const blockedTasks = flatTasks.filter((t) => t.status === 'blocked').length;
 

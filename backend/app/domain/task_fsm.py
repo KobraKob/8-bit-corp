@@ -12,6 +12,7 @@ class TaskStatus(str, Enum):
     BLOCKED = "blocked"
     INTEGRATING = "integrating"
     IN_REVIEW = "in_review"
+    REVIEWING = "reviewing"
     REVISION_REQUESTED = "revision_requested"
     DONE = "done"
     FAILED = "failed"
@@ -53,8 +54,17 @@ LEGAL_TRANSITIONS: Dict[TaskStatus, Set[TaskStatus]] = {
         TaskStatus.CANCELLED,
     },
     TaskStatus.IN_REVIEW: {
+        TaskStatus.REVIEWING,
         TaskStatus.DONE,
         TaskStatus.REVISION_REQUESTED,
+        TaskStatus.FAILED,
+        TaskStatus.CANCELLED,
+    },
+    TaskStatus.REVIEWING: {
+        TaskStatus.IN_REVIEW,
+        TaskStatus.DONE,
+        TaskStatus.REVISION_REQUESTED,
+        TaskStatus.BLOCKED,
         TaskStatus.FAILED,
         TaskStatus.CANCELLED,
     },

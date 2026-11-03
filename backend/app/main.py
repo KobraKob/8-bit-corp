@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 load_dotenv()
 
@@ -46,7 +47,7 @@ app = FastAPI(
 # CORS Middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Permits local dev frontends
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -71,4 +72,9 @@ async def health_check():
 
 @app.get("/api/ready", tags=["system"])
 async def readiness_check():
-    return {"ready": True, "scheduler_running": scheduler.running}
+    if not scheduler.running:
+        return JSONResponse(
+            status_code=503,
+            content={"ready": False, "scheduler_running": False},
+        )
+    return {"ready": True, "scheduler_running": True}

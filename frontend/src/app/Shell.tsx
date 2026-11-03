@@ -91,7 +91,7 @@ export const Shell: React.FC = () => {
 
           {/* Subtle controls overlay tooltip */}
           <div className="absolute bottom-2 left-2 bg-slate-950/80 backdrop-blur-sm border border-slate-800/80 px-2.5 py-1 rounded text-[10px] font-mono text-slate-400 pointer-events-none select-none z-10">
-            Click agent to inspect • Drag to pan • Scroll to zoom
+            Click agent to inspect • Right-drag to pan • Scroll to zoom
           </div>
         </div>
 

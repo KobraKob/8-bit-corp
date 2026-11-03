@@ -1,8 +1,7 @@
-from typing import List, Optional
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from app.core.logging import logger
-from app.db.models import Agent, Artifact, Project, Task
+from app.db.models import Artifact, Task
 from app.db.session import async_session_factory
 from app.domain.task_fsm import TaskStatus
 from app.events.event_bus import event_bus
@@ -11,103 +10,98 @@ from app.workspace.workspace_manager import workspace_manager
 
 
 class IntegrationEngine:
-    """Bottom-up synthesis: synthesizes completed child tasks into a unified parent deliverable."""
+    """Integrate reviewed child work, review the parent, then recurse toward the CEO."""
 
     @staticmethod
     async def integrate_parent_task(parent_task_id: str) -> None:
-        # Step 1: Read parent and child data
         async with async_session_factory() as session:
+            parent = await session.get(Task, parent_task_id)
+            if not parent or parent.status in (TaskStatus.INTEGRATING.value, TaskStatus.IN_REVIEW.value, TaskStatus.REVIEWING.value, TaskStatus.REVISION_REQUESTED.value, TaskStatus.DONE.value, TaskStatus.BLOCKED.value, TaskStatus.FAILED.value, TaskStatus.CANCELLED.value):
+                return
+            children = (await session.execute(
+                select(Task).where(Task.parent_id == parent_task_id)
+            )).scalars().all()
+            if not children or not all(child.status == TaskStatus.DONE.value for child in children):
+                return
+
+            claim = await session.execute(
+                update(Task)
+                .where(
+                    Task.id == parent_task_id,
+                    Task.status.not_in([TaskStatus.INTEGRATING.value, TaskStatus.IN_REVIEW.value, TaskStatus.REVIEWING.value, TaskStatus.REVISION_REQUESTED.value, TaskStatus.DONE.value, TaskStatus.BLOCKED.value, TaskStatus.FAILED.value, TaskStatus.CANCELLED.value]),
+                )
+                .values(status=TaskStatus.INTEGRATING.value)
+            )
+            if claim.rowcount != 1:
+                return
+            await session.commit()
+
             parent = await session.get(Task, parent_task_id)
             if not parent:
                 return
-
-            children_stmt = select(Task).where(Task.parent_id == parent_task_id)
-            res = await session.execute(children_stmt)
-            children = res.scalars().all()
-
-            if not children or not all(c.status == TaskStatus.DONE.value for c in children):
-                return
-
-            parent.status = TaskStatus.INTEGRATING.value
-            await session.commit()
-
             parent_id = parent.id
             parent_title = parent.title
             parent_goal = parent.original_goal
             project_id = parent.project_id
             assignee_id = parent.assignee_agent_id
-            is_root = parent.parent_id is None
-            parent_desc = parent.description
-
-            deliverable_summaries: List[str] = []
-            for c in children:
-                art_stmt = select(Artifact).where(Artifact.task_id == c.id)
-                art_res = await session.execute(art_stmt)
-                artifacts = art_res.scalars().all()
-                art_text = ", ".join(f"{a.kind}:{a.path}" for a in artifacts)
-                deliverable_summaries.append(
-                    f"### Component: {c.title}\n- Assignee: {c.assignee_agent_id}\n- Artifacts: {art_text}\n- Description: {c.description}"
+            parent_parent_id = parent.parent_id
+            child_ids = [child.id for child in children]
+            summaries = []
+            for child in children:
+                artifacts = (await session.execute(
+                    select(Artifact).where(Artifact.task_id == child.id)
+                )).scalars().all()
+                artifact_lines = "\n".join(
+                    f"- {artifact.kind}: {artifact.path} — {artifact.summary}"
+                    for artifact in artifacts
+                ) or "- No file artifact attached; see completed task notes."
+                summaries.append(
+                    f"### {child.title}\n- Assignee: {child.assignee_agent_id or 'Unassigned'}"
+                    f"\n- Description: {child.description}\n{artifact_lines}"
                 )
 
-        # Step 2: Synthesize and create artifact outside open session
-        compiled_content = (
-            f"# Consolidated Integration Deliverable: {parent_title}\n\n"
-            f"**Original Goal:** {parent_goal}\n\n"
-            f"## Integrated Child Deliverables\n\n"
-            + "\n\n".join(deliverable_summaries)
-            + "\n\n## Verification & Acceptance\nAll child objectives completed and verified by designated reviewers."
+        content = (
+            f"# Integrated deliverable: {parent_title}\n\n"
+            f"**Original goal:** {parent_goal}\n\n"
+            "## Reviewed work packages\n\n" + "\n\n".join(summaries) +
+            "\n\n## Completion status\nEvery child work package passed its designated review. "
+            "This integrated document is submitted for parent-level review."
         )
 
-        consolidated_artifact = await workspace_manager.create_artifact(
-            project_id=project_id,
-            task_id=parent_id,
-            agent_id=assignee_id,
-            kind="markdown",
-            title=f"Integrated_{parent_title[:30]}",
-            content=compiled_content,
-        )
-
-        # Step 3: Update parent and project status in DB
-        async with async_session_factory() as session:
-            p_rec = await session.get(Task, parent_id)
-            if not p_rec:
-                return
-            p_rec.deliverable_artifact_id = consolidated_artifact.id
-
-            if is_root:
-                p_rec.status = TaskStatus.DONE.value
-                proj = await session.get(Project, project_id)
-                if proj:
-                    proj.status = "completed"
-            else:
-                p_rec.status = TaskStatus.IN_REVIEW.value
-
-            await session.commit()
-
-        # Step 4: Emit events cleanly after DB commit
-        if is_root:
-            await event_bus.emit(
-                event_type=EventType.TASK_DONE,
-                project_id=project_id,
-                task_id=parent_id,
-                agent_id=assignee_id,
-                payload={"deliverable_artifact_id": consolidated_artifact.id},
+        try:
+            artifact = await workspace_manager.create_artifact(
+                project_id=project_id, task_id=parent_id, agent_id=assignee_id,
+                kind="markdown", title=f"Integrated_{parent_title[:30]}", content=content,
             )
-            await event_bus.emit(
-                event_type=EventType.PROJECT_COMPLETED,
-                project_id=project_id,
-                payload={
-                    "project_id": project_id,
-                    "root_deliverable_id": consolidated_artifact.id,
-                    "summary": parent_desc,
-                },
-            )
-            logger.info(f"Project {project_id} successfully COMPLETED by CEO integration!")
-        else:
+            async with async_session_factory() as session:
+                parent = await session.get(Task, parent_id)
+                if not parent or parent.status == TaskStatus.CANCELLED.value:
+                    return
+                parent.deliverable_artifact_id = artifact.id
+                parent.status = TaskStatus.IN_REVIEW.value
+                await session.commit()
+
             await event_bus.emit(
                 event_type=EventType.TASK_REVIEW_REQUESTED,
-                project_id=project_id,
-                task_id=parent_id,
-                agent_id=assignee_id,
-                payload={"deliverable_artifact_id": consolidated_artifact.id},
+                project_id=project_id, task_id=parent_id, agent_id=assignee_id,
+                payload={"deliverable_artifact_id": artifact.id, "integrated_children": child_ids},
             )
+
+            from app.orchestrator.review import ReviewEngine
+            report = await ReviewEngine.review_task(parent_id)
+            if report.decision.lower().strip() != "approve":
+                return
+            if parent_parent_id:
+                await IntegrationEngine.integrate_parent_task(parent_parent_id)
+            else:
+                logger.info("Root project integration approved for %s", project_id)
+        except Exception:
+            async with async_session_factory() as session:
+                parent = await session.get(Task, parent_id)
+                if parent and parent.status == TaskStatus.INTEGRATING.value:
+                    parent.status = TaskStatus.ASSIGNED.value
+                    await session.commit()
+                elif parent and parent.status in (TaskStatus.IN_REVIEW.value, TaskStatus.REVIEWING.value):
+                    parent.status = TaskStatus.IN_REVIEW.value
+                    await session.commit()
+            raise

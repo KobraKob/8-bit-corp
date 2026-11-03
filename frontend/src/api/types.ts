@@ -22,7 +22,7 @@ export interface Task {
   assignee_agent_id?: string | null;
   creator_agent_id?: string | null;
   reviewer_agent_id?: string | null;
-  status: 'pending' | 'assigned' | 'in_progress' | 'blocked' | 'integrating' | 'in_review' | 'revision_requested' | 'done' | 'failed' | 'cancelled';
+  status: 'pending' | 'assigned' | 'in_progress' | 'blocked' | 'integrating' | 'in_review' | 'reviewing' | 'revision_requested' | 'done' | 'failed' | 'cancelled';
   attempt: number;
   max_attempts: number;
   depends_on_json: string[];

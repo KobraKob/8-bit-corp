@@ -1,10 +1,11 @@
 from typing import List, Optional
+from datetime import datetime, timezone
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from app.core.config import get_app_settings
 from app.core.logging import logger
-from app.db.models import Agent, Artifact, Task
+from app.db.models import Agent, Artifact, Project, Task
 from app.db.session import async_session_factory
 from app.domain.task_fsm import TaskStatus
 from app.events.event_bus import event_bus
@@ -43,6 +44,8 @@ class ReviewEngine:
             task = await session.get(Task, task_id)
             if not task:
                 raise ValueError(f"Task {task_id} not found")
+            task.status = TaskStatus.REVIEWING.value
+            await session.commit()
 
             # Determine reviewer agent
             reviewer_id = task.reviewer_agent_id
@@ -106,6 +109,15 @@ class ReviewEngine:
 
             if decision == "approve":
                 t.status = TaskStatus.DONE.value
+                t.completed_at = datetime.now(timezone.utc)
+                if t.parent_id is None:
+                    project = await session.get(Project, t.project_id)
+                    if project:
+                        project.status = "completed"
+                    events_to_emit.append((
+                        EventType.PROJECT_COMPLETED, t.project_id, None, reviewer.id,
+                        {"project_id": t.project_id, "root_deliverable_id": t.deliverable_artifact_id},
+                    ))
                 events_to_emit.append((
                     EventType.TASK_APPROVED,
                     t.project_id,
@@ -125,7 +137,7 @@ class ReviewEngine:
                 t.attempt += 1
                 if t.attempt > settings.settings.max_revisions:
                     logger.warning(f"Task {t.id} exceeded max revisions ({t.attempt}). Escalating.")
-                    t.status = TaskStatus.IN_REVIEW.value
+                    t.status = TaskStatus.BLOCKED.value
                     events_to_emit.append((
                         EventType.TASK_BLOCKED,
                         t.project_id,
@@ -143,7 +155,7 @@ class ReviewEngine:
                         reviewer.id,
                         {"revision_notes": report.required_revisions, "attempt": t.attempt},
                     ))
-                    t.status = TaskStatus.IN_PROGRESS.value
+                    # Scheduler resumes this explicit revision state.
 
             elif decision == "escalate":
                 t.status = TaskStatus.BLOCKED.value
@@ -153,6 +165,13 @@ class ReviewEngine:
                     t.id,
                     reviewer.id,
                     {"reason": f"Escalated by reviewer: {report.summary}"},
+                ))
+
+            else:
+                t.status = TaskStatus.BLOCKED.value
+                events_to_emit.append((
+                    EventType.TASK_BLOCKED, t.project_id, t.id, reviewer.id,
+                    {"reason": f"Unsupported review decision: {report.decision}"},
                 ))
 
             await session.commit()

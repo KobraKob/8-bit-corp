@@ -183,7 +183,7 @@ TOOL_DEFINITIONS: Dict[str, Dict[str, Any]] = {
         "type": "function",
         "function": {
             "name": "run_code",
-            "description": "Execute code in a secure local sandbox (python or node) within the project workspace.",
+            "description": "Execute code in a restricted local subprocess (python or node); not a security boundary for untrusted production workloads.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -352,8 +352,19 @@ class ToolExecutor:
                 detect_cycles_in_subtasks(subtasks)
                 return {"success": True, "delegated_count": len(subtasks), "subtasks": subtasks}
 
-            elif tool_name in ("submit_deliverable", "review_decision", "report_blocked", "request_help"):
-                # Terminal tools handled by orchestrator / runtime state updates
+            elif tool_name == "review_decision":
+                return {
+                    "success": False,
+                    "error": "Formal acceptance reviews are handled by the review engine after submit_deliverable.",
+                }
+
+            elif tool_name == "request_help":
+                return {
+                    "success": False,
+                    "error": "Support routing is not available yet. Use delegate to create a scoped support task.",
+                }
+
+            elif tool_name in ("submit_deliverable", "report_blocked"):
                 return {"success": True, "action": tool_name, "args": args}
 
             else:
