@@ -39,14 +39,26 @@ class WorkspaceManager:
         return agent_dir
 
     def resolve_agent_path(self, project_id: str, agent_id: str, relative_path: str) -> Path:
-        """Resolve an agent-private path, or an explicit shared/artifact path."""
+        """Resolve a private agent path or an explicitly shared project path."""
         normalized = relative_path.replace("\\", "/")
-        if normalized.startswith("shared/"):
+        if (
+            Path(normalized).is_absolute()
+            or normalized.startswith("/")
+            or re.match(r"^[A-Za-z]:", normalized)
+            or ".." in PurePosixPath(normalized).parts
+        ):
+            raise SecurityViolationError(f"Unsafe agent workspace path: '{relative_path}'")
+
+        if normalized == "shared" or normalized.startswith("shared/"):
             return self.resolve_safe_path(project_id, normalized)
-        if normalized.startswith("artifacts/"):
+        if normalized == "artifacts" or normalized.startswith("artifacts/"):
             return self.resolve_safe_path(project_id, normalized)
+
         safe_agent_id = "".join(c for c in agent_id if c.isalnum() or c in ("-", "_"))
-        return self.resolve_safe_path(project_id, f"agents/{safe_agent_id}/{normalized}")
+        if not safe_agent_id:
+            raise SecurityViolationError("Agent id is not a valid workspace identifier.")
+        private_path = normalized or "."
+        return self.resolve_safe_path(project_id, f"agents/{safe_agent_id}/{private_path}")
 
     def write_agent_file(self, project_id: str, agent_id: str, relative_path: str, content: str) -> str:
         target = self.resolve_agent_path(project_id, agent_id, relative_path)
@@ -64,8 +76,20 @@ class WorkspaceManager:
         target = self.resolve_agent_path(project_id, agent_id, subpath or ".")
         if not target.exists() or not target.is_dir():
             return []
-        project_dir = self.get_project_dir(project_id)
-        return sorted(str(path.relative_to(project_dir).as_posix()) for path in target.rglob("*") if path.is_file())
+
+        normalized = subpath.replace("\\", "/")
+        is_shared_path = normalized == "shared" or normalized.startswith("shared/")
+        is_artifact_path = normalized == "artifacts" or normalized.startswith("artifacts/")
+        if is_shared_path or is_artifact_path:
+            base_dir = self.get_project_dir(project_id)
+        else:
+            base_dir = self.get_agent_dir(project_id, agent_id)
+
+        return sorted(
+            str(path.relative_to(base_dir).as_posix())
+            for path in target.rglob("*")
+            if path.is_file()
+        )
 
     def resolve_safe_path(self, project_id: str, relative_path: str) -> Path:
         """Resolve a relative path inside project directory, blocking directory traversal and absolute escapes."""
