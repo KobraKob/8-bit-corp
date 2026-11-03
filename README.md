@@ -106,6 +106,28 @@ pnpm build
 
 ---
 
+## Runtime reliability and debugging
+
+### Provider adapters
+Provider selection is explicit in `config/models.yaml`:
+- `groq`: Groq chat-completions adapter with pooled API keys.
+- `openai_compatible`: OpenAI-compatible gateways and self-hosted endpoints.
+- `ollama`: Ollama's local OpenAI-compatible `/v1` endpoint.
+- `mock`: deterministic offline testing.
+
+Set `LLM_PROVIDER` in `.env`. For Ollama, set `LLM_PROVIDER=ollama`, start Ollama, and set the tier model IDs in `config/models.yaml` to models installed locally. The OpenAI-compatible adapter uses a 60-second request timeout and leaves retries to the router. Retryable timeouts, connection failures, 408/409/425, 429, and 5xx responses use bounded exponential backoff; `Retry-After` is respected when supplied. Non-retryable errors move directly to the next configured model fallback.
+
+### Durable execution
+Each task stores a JSON checkpoint, worker lease token, lease expiry, retry time, and delegation count. The runtime persists its conversation, tool-call state, token usage, and execution phase after each model/tool step. A worker must own the current lease to write checkpoints. Expired leases are recovered by the scheduler without deleting the last checkpoint.
+
+Tool calls are recorded as started before execution and completed after their result is saved. If a process dies between those writes, the tool is not blindly replayed: the model receives an interruption marker and must inspect the current workspace before deciding what to do next. This avoids automatic duplicate side effects, but external tools should still be designed to be idempotent.
+
+### Task diagnostics
+Select a task in the execution tree to view its structured diagnostics. The same records are available from `GET /api/tasks/{task_id}/logs`. Logs include claims, checkpoints, tool execution, recovery, and errors. They intentionally exclude provider secrets.
+
+### Retry and delegation limits
+Task failures use bounded exponential retry delays and stop at the task's `max_attempts`. Provider retries are separately bounded by `llm_max_retries`. A task can delegate only once; the project task-count and hierarchy-depth limits prevent recursive fan-out from growing without bound. Repeated identical tool calls are intercepted by the runtime.
+
 ## Security and deployment boundary
 
 The built-in `run_code` tool uses a restricted subprocess, not a hardened container boundary. Do not expose this development server to untrusted users or execute untrusted agent code on a production host. Before public deployment, isolate code execution in disposable containers with CPU, memory, filesystem, and network limits, and add authentication to the API.
@@ -153,12 +175,12 @@ pixel-corp/
       db/                 # SQLAlchemy 2 models, async session, WAL mode
       domain/             # Pure task FSM, DAG cycle detection, org model
       events/             # Monotonic event bus with catch-up resume
-      llm/                # Rate limiter, JSON repair, LLM router, Groq/Mock
+      llm/                # Provider adapters, retries, rate limiter, JSON repair
       agents/             # Context builder, agent runtime tool loop
       tools/              # Tool registry, subprocess sandbox, SSRF guard
-      orchestrator/       # Triage, delegation, reviews, integration, scheduler
+      orchestrator/       # Triage, checkpoints, delegation, reviews, scheduler
       workspace/          # Isolated project workspaces with path traversal guards
-    tests/                # 26 unit & integration tests
+    tests/                # Backend unit & integration tests
   frontend/
     src/
       api/                # Typed REST client

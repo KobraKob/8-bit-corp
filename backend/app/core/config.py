@@ -24,6 +24,7 @@ PROJECT_ROOT = find_project_root()
 class ProviderConfig(BaseModel):
     base_url: str
     api_key_env: str
+    adapter: str = "openai_compatible"
 
 
 class TierConfig(BaseModel):

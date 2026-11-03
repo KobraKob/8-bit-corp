@@ -37,6 +37,15 @@ export interface Task {
   error?: string | null;
 }
 
+export interface TaskLogEntry {
+  id: string;
+  level: 'debug' | 'info' | 'warning' | 'error';
+  event: string;
+  message: string;
+  metadata: Record<string, any>;
+  created_at: string;
+}
+
 export interface TaskTreeNode extends Task {
   children: TaskTreeNode[];
 }

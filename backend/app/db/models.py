@@ -94,6 +94,11 @@ class Task(Base):
     started_at = Column(DateTime(timezone=True), nullable=True)
     completed_at = Column(DateTime(timezone=True), nullable=True)
     error = Column(Text, nullable=True)
+    checkpoint_json = Column(JSON, default=dict, nullable=False)
+    lease_token = Column(String(64), nullable=True, index=True)
+    lease_expires_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    next_retry_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    delegation_count = Column(Integer, default=0, nullable=False)
 
     project = relationship("Project", back_populates="tasks")
     children = relationship("Task", backref="parent", remote_side=[id], foreign_keys=[parent_id])
@@ -193,3 +198,15 @@ class DailyUsage(Base):
     day = Column(String(10), nullable=False, index=True)  # YYYY-MM-DD
     requests_count = Column(Integer, default=0, nullable=False)
     tokens_count = Column(Integer, default=0, nullable=False)
+
+
+
+class TaskLog(Base):
+    __tablename__ = "task_logs"
+    id = Column(String(36), primary_key=True)
+    task_id = Column(String(36), ForeignKey("tasks.id", ondelete="CASCADE"), nullable=False, index=True)
+    level = Column(String(20), default="info", nullable=False)
+    event = Column(String(100), nullable=False, index=True)
+    message = Column(Text, nullable=False)
+    metadata_json = Column(JSON, default=dict, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=utc_now, nullable=False, index=True)

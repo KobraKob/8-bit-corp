@@ -3,10 +3,11 @@ from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
 
 from app.api.schemas import TaskResponse
-from app.db.models import Message, Task
+from app.db.models import Message, Task, TaskLog
 from app.db.session import async_session_factory
 from app.domain.task_fsm import TaskStatus
 from app.orchestrator.scheduler import scheduler
+from app.orchestrator.checkpoints import log_task
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
 
@@ -64,6 +65,33 @@ async def get_task_detail(task_id: str):
         }
 
 
+@router.get("/{task_id}/logs")
+async def get_task_logs(task_id: str, limit: int = 200):
+    """Return recent task execution diagnostics in chronological order."""
+    limit = max(1, min(limit, 500))
+    async with async_session_factory() as session:
+        if not await session.get(Task, task_id):
+            raise HTTPException(status_code=404, detail="Task not found")
+        stmt = (
+            select(TaskLog)
+            .where(TaskLog.task_id == task_id)
+            .order_by(TaskLog.created_at.desc())
+            .limit(limit)
+        )
+        rows = (await session.execute(stmt)).scalars().all()
+        return [
+            {
+                "id": row.id,
+                "level": row.level,
+                "event": row.event,
+                "message": row.message,
+                "metadata": row.metadata_json,
+                "created_at": row.created_at,
+            }
+            for row in reversed(rows)
+        ]
+
+
 @router.post("/{task_id}/cancel")
 async def cancel_task(task_id: str):
     await scheduler.cancel_task_subtree(task_id)
@@ -99,5 +127,9 @@ async def retry_task(task_id: str):
         t.status = TaskStatus.ASSIGNED.value
         t.attempt = 0
         t.error = None
+        t.next_retry_at = None
+        t.lease_token = None
+        t.lease_expires_at = None
         await session.commit()
+    await log_task(task_id, "task.manual_retry", "Task manually reset for a fresh attempt.")
     return {"success": True, "message": f"Task {task_id} reset to assigned for retry."}
