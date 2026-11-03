@@ -85,7 +85,7 @@ class Scheduler:
                 if task and not TaskFSM.is_terminal(TaskStatus(task.status)):
                     task.status = TaskStatus.CANCELLED.value
                     await event_bus.emit(
-                        event_type=EventType.TASK_FAILED,
+                        event_type=EventType.TASK_CANCELLED,
                         project_id=task.project_id,
                         task_id=task.id,
                         payload={"reason": "Cancelled by user"},
