@@ -18,6 +18,7 @@ export const Shell: React.FC = () => {
   const [isIntakeOpen, setIsIntakeOpen] = useState(false);
   const [isPanelsOpen, setIsPanelsOpen] = useState(false);
   const { fetchProjects, fetchAgents, fetchApprovals, fetchUsage, agents } = useAppStore();
+  const hasAgents = agents.length > 0;
 
   useEffect(() => {
     // Initial fetch of application state
@@ -47,7 +48,7 @@ export const Shell: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (!officeContainerRef.current || gameRef.current || agents.length === 0) return;
+    if (!officeContainerRef.current || gameRef.current || !hasAgents) return;
 
     // Initialize Phaser 3 Pixel Office Game
     const config: Phaser.Types.Core.GameConfig = {
@@ -75,7 +76,7 @@ export const Shell: React.FC = () => {
       gameRef.current?.destroy(true);
       gameRef.current = null;
     };
-  }, [agents.length]);
+  }, [hasAgents]);
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-slate-950 font-sans text-slate-100">
