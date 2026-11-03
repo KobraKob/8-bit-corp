@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { apiClient } from '../api/client';
+import { CompanyMeeting } from '../api/types';
 import { useAppStore } from '../state/useAppStore';
 import { Users, RefreshCw, Video, CheckCircle2 } from 'lucide-react';
 
 export const CompanyMeetingsPanel: React.FC = () => {
   const { activeProjectId, projects, networkStatus } = useAppStore();
-  const [meetings, setMeetings] = useState<any[]>([]);
+  const [meetings, setMeetings] = useState<CompanyMeeting[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
