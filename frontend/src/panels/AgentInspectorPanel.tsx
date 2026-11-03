@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAppStore } from '../state/useAppStore';
 import { apiClient } from '../api/client';
+import { AgentAvatar } from '../components/AgentAvatar';
 import { Shield, Sparkles, Terminal, UserX, Save, Check, Key, ShieldCheck, Trash2 } from 'lucide-react';
 
 export const AgentInspectorPanel: React.FC = () => {
@@ -12,6 +13,7 @@ export const AgentInspectorPanel: React.FC = () => {
   const [customKeyInput, setCustomKeyInput] = useState('');
   const [isSaved, setIsSaved] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   // Sync state when selection changes
   React.useEffect(() => {
@@ -25,7 +27,7 @@ export const AgentInspectorPanel: React.FC = () => {
 
   if (!agent) {
     return (
-      <div className="p-8 text-center text-slate-500 text-xs font-mono">
+      <div className="app-empty">
         Click on any agent sprite in the office or from a task to inspect their role, prompt, and tier.
       </div>
     );
@@ -35,6 +37,7 @@ export const AgentInspectorPanel: React.FC = () => {
 
   const handleSave = async () => {
     setIsSaving(true);
+    setSaveError(null);
     try {
       const payload: any = {
         system_prompt: prompt,
@@ -49,6 +52,7 @@ export const AgentInspectorPanel: React.FC = () => {
       setIsSaved(true);
       setTimeout(() => setIsSaved(false), 2500);
     } catch (e) {
+      setSaveError(e instanceof Error ? e.message : 'Could not update this agent.');
       console.error('Failed to update agent', e);
     } finally {
       setIsSaving(false);
@@ -57,11 +61,13 @@ export const AgentInspectorPanel: React.FC = () => {
 
   const handleClearCustomKey = async () => {
     setIsSaving(true);
+    setSaveError(null);
     try {
       await apiClient.updateAgent(agent.id, { api_key: '' });
       await fetchAgents();
       setCustomKeyInput('');
     } catch (e) {
+      setSaveError(e instanceof Error ? e.message : 'Could not clear this key.');
       console.error('Failed to clear agent API key', e);
     } finally {
       setIsSaving(false);
@@ -81,12 +87,12 @@ export const AgentInspectorPanel: React.FC = () => {
       <div className="flex items-center justify-between pb-3 border-b border-slate-800">
         <div>
           <h3 className="font-bold text-sm text-slate-100">{agent.display_name}</h3>
-          <p className="text-[11px] text-slate-400 font-mono">
+          <p className="text-[11px] text-slate-400 font-sans">
             {agent.department} • Level {agent.level} • {agent.role_key}
           </p>
         </div>
         <span
-          className={`px-2 py-0.5 rounded text-[10px] font-mono uppercase ${
+          className={`px-2 py-0.5 rounded text-[10px] font-medium ${
             agent.status === 'active' ? 'bg-emerald-950 text-emerald-400 border border-emerald-800' : 'bg-slate-800 text-slate-400'
           }`}
         >
@@ -151,7 +157,7 @@ export const AgentInspectorPanel: React.FC = () => {
             <button
               key={tier}
               onClick={() => setModelTier(tier)}
-              className={`py-1.5 px-2 rounded border font-mono text-center text-[11px] capitalize transition-all ${
+              className={`py-1.5 px-2 rounded border font-mono text-center text-[11px] capitalize transition-colors ${
                 modelTier === tier
                   ? 'border-sky-500 bg-sky-950 text-sky-200 shadow-sm'
                   : 'border-slate-800 bg-slate-900 text-slate-400 hover:border-slate-700'
