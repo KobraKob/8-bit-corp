@@ -32,6 +32,8 @@ interface AppState {
   taskTreeLoading: boolean;
   taskTreeError: string | null;
   taskTreeUpdatedAt: string | null;
+  taskTreeRequestProjectId: string | null;
+  projectsRequestInFlight: boolean;
   networkStatus: NetworkStatus;
   lastEventId: number;
 
@@ -83,10 +85,14 @@ export const useAppStore = create<AppState>((set, get) => ({
   taskTreeLoading: false,
   taskTreeError: null,
   taskTreeUpdatedAt: null,
+  taskTreeRequestProjectId: null,
+  projectsRequestInFlight: false,
   networkStatus: typeof navigator !== 'undefined' && !navigator.onLine ? 'offline' : 'online',
   lastEventId: 0,
 
   fetchProjects: async () => {
+    if (get().projectsRequestInFlight) return;
+    set({ projectsRequestInFlight: true });
     const hasProjects = get().projects.length > 0;
     set({ projectsLoading: !hasProjects, projectsError: null });
     try {
@@ -94,6 +100,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({
         projects,
         projectsLoading: false,
+        projectsRequestInFlight: false,
         projectsError: null,
         isPaused: derivePaused(projects),
         networkStatus: 'online',
@@ -107,6 +114,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     } catch (error) {
       set({
         projectsLoading: false,
+        projectsRequestInFlight: false,
         projectsError: errorMessage(error),
         networkStatus: typeof navigator !== 'undefined' && !navigator.onLine ? 'offline' : 'degraded',
       });
@@ -121,6 +129,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     taskTreeLoading: false,
     taskTreeError: null,
     taskTreeUpdatedAt: null,
+    taskTreeRequestProjectId: null,
   }),
 
   setActiveProject: async (id: string) => {
@@ -145,9 +154,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   fetchTaskTree: async () => {
     const projectId = get().activeProjectId;
     if (!projectId) {
-      set({ taskTree: [], taskTreeLoading: false, taskTreeError: null });
+      set({ taskTree: [], taskTreeLoading: false, taskTreeError: null, taskTreeRequestProjectId: null });
       return;
     }
+    if (get().taskTreeRequestProjectId === projectId) return;
+    set({ taskTreeRequestProjectId: projectId });
     const hasSnapshot = get().taskTree.length > 0 || Boolean(get().taskTreeCache[projectId]?.length);
     set({ taskTreeLoading: !hasSnapshot, taskTreeError: null });
     try {
@@ -161,6 +172,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           taskTreeLoading: false,
           taskTreeError: null,
           taskTreeUpdatedAt: syncedAt,
+          taskTreeRequestProjectId: null,
           networkStatus: 'online' as const,
         } : {}),
       }));
@@ -168,6 +180,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (get().activeProjectId !== projectId) return;
       set({
         taskTreeLoading: false,
+        taskTreeRequestProjectId: null,
         taskTreeError: errorMessage(error),
         networkStatus: typeof navigator !== 'undefined' && !navigator.onLine ? 'offline' : 'degraded',
       });
