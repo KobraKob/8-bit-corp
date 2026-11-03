@@ -46,7 +46,7 @@
 
 ### Prerequisites
 - **Python 3.11+**
-- **Node.js 18+** & **pnpm** (or npm)
+- **Node.js 20.19+** & **pnpm**
 
 ### 1. Backend Setup
 ```bash
@@ -57,7 +57,7 @@ backend\.venv\Scripts\activate
 # Linux/macOS:
 # source backend/.venv/bin/activate
 
-pip install -r backend/pyproject.toml
+python -m pip install -e "backend[dev]"
 ```
 
 Copy the environment template:
@@ -68,6 +68,7 @@ cp .env.example .env
 
 ### 2. Frontend Setup
 ```bash
+corepack enable
 cd frontend
 pnpm install
 ```
