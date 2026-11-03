@@ -170,7 +170,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({
       activeProjectId: id,
       taskTree: cachedTree,
-      taskTreeLoading: cachedTree.length === 0,
+      taskTreeLoading: cachedTree.length === 0 && !get().taskTreeSyncedAt[id],
       taskTreeError: null,
       taskTreeUpdatedAt: get().taskTreeSyncedAt[id] || null,
       selectedTaskId: null,
@@ -188,7 +188,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
     if (get().taskTreeRequestProjectId === projectId) return;
     set({ taskTreeRequestProjectId: projectId });
-    const hasSnapshot = get().taskTree.length > 0 || Boolean(get().taskTreeCache[projectId]?.length);
+    const hasSnapshot = get().taskTree.length > 0 || Boolean(get().taskTreeSyncedAt[projectId]);
     set({ taskTreeLoading: !hasSnapshot, taskTreeError: null });
     try {
       const tree = await apiClient.getProjectTree(projectId);
@@ -196,12 +196,12 @@ export const useAppStore = create<AppState>((set, get) => ({
       set((state) => ({
         taskTreeCache: { ...state.taskTreeCache, [projectId]: tree },
         taskTreeSyncedAt: { ...state.taskTreeSyncedAt, [projectId]: syncedAt },
+        ...(state.taskTreeRequestProjectId === projectId ? { taskTreeRequestProjectId: null } : {}),
         ...(state.activeProjectId === projectId ? {
           taskTree: tree,
           taskTreeLoading: false,
           taskTreeError: null,
           taskTreeUpdatedAt: syncedAt,
-          taskTreeRequestProjectId: null,
           networkStatus: 'online' as const,
         } : {}),
       }));
