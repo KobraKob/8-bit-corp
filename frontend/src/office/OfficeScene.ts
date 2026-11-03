@@ -5,6 +5,7 @@ import { generateBuildingLayout } from './buildingLayout';
 import { proceduralPixelArt } from './proceduralArt';
 import { AgentActionState, BuildingLayout, DeskPosition } from './types';
 import { useAppStore } from '../state/useAppStore';
+import { loadCeoAnimation, loadLottieRuntime, LottiePlayer } from '../lib/lottie';
 
 interface AgentSprite {
   agent: Agent;
@@ -25,6 +26,12 @@ export class OfficeScene extends Phaser.Scene {
   private panStartY = 0;
   private handledEventIds = new Set<number>();
   private unsubscribeStore?: () => void;
+  private ceoAnimationPlayer?: LottiePlayer;
+  private ceoAnimationHost?: HTMLDivElement;
+  private ceoAnimationSource?: HTMLCanvasElement;
+  private ceoAnimationTexture?: ReturnType<Phaser.Textures.TextureManager['createCanvas']>;
+  private ceoAnimationContext?: CanvasRenderingContext2D;
+  private isSceneShuttingDown = false;
 
   constructor() {
     super({ key: 'OfficeScene' });
@@ -36,6 +43,8 @@ export class OfficeScene extends Phaser.Scene {
   }
 
   create() {
+    this.isSceneShuttingDown = false;
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.cleanupCeoAnimation, this);
     const agents = useAppStore.getState().agents;
     this.layout = generateBuildingLayout(agents);
 
@@ -187,14 +196,110 @@ export class OfficeScene extends Phaser.Scene {
         useAppStore.getState().setSelectedAgent(agent.id);
       });
 
-      this.agentSprites.set(agent.id, {
+      const entry: AgentSprite = {
         agent,
         container,
         sprite,
         state: 'working',
         desk,
-      });
+      };
+      this.agentSprites.set(agent.id, entry);
+      if (isCeo) void this.mountCeoAnimation(entry);
     }
+  }
+
+  private async mountCeoAnimation(entry: AgentSprite) {
+    try {
+      const [runtime, animationData] = await Promise.all([
+        loadLottieRuntime(),
+        loadCeoAnimation(),
+      ]);
+      if (this.isSceneShuttingDown || !entry.container.active) return;
+
+      const host = document.createElement('div');
+      host.setAttribute('aria-hidden', 'true');
+      Object.assign(host.style, {
+        position: 'fixed',
+        left: '-10000px',
+        top: '0',
+        width: '48px',
+        height: '48px',
+        overflow: 'hidden',
+        pointerEvents: 'none',
+      });
+      document.body.appendChild(host);
+
+      const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const player = runtime.loadAnimation({
+        container: host,
+        renderer: 'canvas',
+        loop: !reduceMotion,
+        autoplay: !reduceMotion,
+        animationData,
+        rendererSettings: {
+          dpr: 1,
+          clearCanvas: true,
+          preserveAspectRatio: 'xMidYMid meet',
+        },
+      });
+
+      if (reduceMotion) player.goToAndStop(0, true);
+      await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+
+      const sourceCanvas = host.querySelector('canvas');
+      if (this.isSceneShuttingDown || !sourceCanvas) {
+        player.destroy();
+        host.remove();
+        return;
+      }
+
+      const textureKey = 'agent_ceo_lottie';
+      if (this.textures.exists(textureKey)) this.textures.remove(textureKey);
+      const texture = this.textures.createCanvas(textureKey, 48, 48);
+      if (!texture) {
+        player.destroy();
+        host.remove();
+        return;
+      }
+
+      this.ceoAnimationPlayer = player;
+      this.ceoAnimationHost = host;
+      this.ceoAnimationSource = sourceCanvas;
+      this.ceoAnimationTexture = texture;
+      this.ceoAnimationContext = texture.getContext();
+      entry.sprite.setTexture(textureKey);
+      entry.sprite.setDisplaySize(24, 26);
+      this.drawCeoAnimationFrame();
+    } catch (error) {
+      // Keep the deterministic pixel portrait if the animation cannot load.
+      console.warn('[Pixel Corp] CEO animation unavailable; using the static portrait.', error);
+    }
+  }
+
+  private drawCeoAnimationFrame() {
+    const source = this.ceoAnimationSource;
+    const context = this.ceoAnimationContext;
+    const texture = this.ceoAnimationTexture;
+    if (!source || !context || !texture || this.isSceneShuttingDown) return;
+
+    context.clearRect(0, 0, 48, 48);
+    const scale = Math.min(48 / source.width, 48 / source.height);
+    const width = source.width * scale;
+    const height = source.height * scale;
+    context.drawImage(source, (48 - width) / 2, (48 - height) / 2, width, height);
+    texture.refresh();
+  }
+
+  private cleanupCeoAnimation() {
+    this.isSceneShuttingDown = true;
+    this.ceoAnimationPlayer?.destroy();
+    this.ceoAnimationPlayer = undefined;
+    this.ceoAnimationHost?.remove();
+    this.ceoAnimationHost = undefined;
+    this.ceoAnimationSource = undefined;
+    this.ceoAnimationContext = undefined;
+    this.ceoAnimationTexture = undefined;
+    if (this.textures.exists('agent_ceo_lottie')) this.textures.remove('agent_ceo_lottie');
   }
 
   private syncAgents(agents: Agent[]) {
@@ -343,6 +448,7 @@ export class OfficeScene extends Phaser.Scene {
   }
 
   update() {
-    // 60 fps update loop
+    // Lottie renders to an offscreen canvas; copy only the 48px CEO texture into Phaser.
+    this.drawCeoAnimationFrame();
   }
 }
