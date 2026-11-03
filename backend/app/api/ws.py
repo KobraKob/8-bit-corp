@@ -42,16 +42,48 @@ async def websocket_event_stream(websocket: WebSocket):
 
     listener_task = asyncio.create_task(client_listener())
     relay_task = asyncio.create_task(relay_live_events())
+    pending_outbound_task: asyncio.Task[EventPayload] | None = None
 
     try:
         while True:
-            event: EventPayload = await outbound_queue.get()
+            # Watch both the outbound queue and the receive loop. Otherwise a
+            # disconnected client can leave this handler blocked forever.
+            pending_outbound_task = asyncio.create_task(outbound_queue.get())
+            done, _ = await asyncio.wait(
+                {pending_outbound_task, listener_task},
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+
+            if listener_task in done:
+                pending_outbound_task.cancel()
+                await asyncio.gather(pending_outbound_task, return_exceptions=True)
+                pending_outbound_task = None
+                # Propagate unexpected listener failures; normal disconnects
+                # return cleanly from client_listener.
+                await listener_task
+                logger.info("WebSocket client disconnected.")
+                break
+
+            event = pending_outbound_task.result()
+            pending_outbound_task = None
             await websocket.send_text(event.model_dump_json())
     except WebSocketDisconnect:
         logger.info("WebSocket client disconnected.")
+    except asyncio.CancelledError:
+        # Preserve cancellation semantics while still running the cleanup below.
+        logger.info("WebSocket connection cancelled during server shutdown.")
+        raise
     except Exception as exc:
         logger.warning("WebSocket connection closed: %s", exc)
     finally:
-        listener_task.cancel()
-        relay_task.cancel()
+        background_tasks = [listener_task, relay_task]
+        if pending_outbound_task is not None:
+            background_tasks.append(pending_outbound_task)
+
+        for task in background_tasks:
+            if not task.done():
+                task.cancel()
+
+        # Collect cancelled tasks before releasing the event-bus subscription.
+        await asyncio.gather(*background_tasks, return_exceptions=True)
         await event_bus.unsubscribe(subscriber_queue)
