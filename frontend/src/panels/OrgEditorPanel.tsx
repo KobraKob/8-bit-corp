@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { useAppStore } from '../state/useAppStore';
 import { apiClient } from '../api/client';
+import { AgentAvatar } from '../components/AgentAvatar';
 import { UserPlus, Users, Sparkles } from 'lucide-react';
 
 export const OrgEditorPanel: React.FC = () => {
-  const { agents, fetchAgents } = useAppStore();
+  const { agents, fetchAgents, setSelectedAgent } = useAppStore();
 
   const [title, setTitle] = useState('');
   const [department, setDepartment] = useState('Special Projects');
@@ -12,6 +13,7 @@ export const OrgEditorPanel: React.FC = () => {
   const [tier, setTier] = useState('fast');
   const [prompt, setPrompt] = useState('');
   const [isHiring, setIsHiring] = useState(false);
+  const [hireError, setHireError] = useState<string | null>(null);
 
   // Group headcount by department
   const depts: Record<string, number> = {};
@@ -26,6 +28,7 @@ export const OrgEditorPanel: React.FC = () => {
     if (!title.trim()) return;
 
     setIsHiring(true);
+    setHireError(null);
     try {
       await apiClient.hireAgent({
         title,
@@ -38,6 +41,7 @@ export const OrgEditorPanel: React.FC = () => {
       setTitle('');
       setPrompt('');
     } catch (err) {
+      setHireError(err instanceof Error ? err.message : 'Could not hire this agent.');
       console.error('Failed to hire dynamic agent', err);
     } finally {
       setIsHiring(false);
@@ -61,7 +65,29 @@ export const OrgEditorPanel: React.FC = () => {
         </div>
       </div>
 
+      <section className="flex flex-col gap-2">
+        <h3 className="text-xs font-medium text-slate-200">Team roster</h3>
+        <div className="flex flex-col divide-y divide-slate-800 border-y border-slate-800">
+          {agents.filter((agent) => agent.status === 'active').map((agent) => (
+            <button
+              type="button"
+              key={agent.id}
+              onClick={() => setSelectedAgent(agent.id)}
+              className="flex items-center gap-3 py-2.5 text-left hover:bg-slate-900"
+            >
+              <AgentAvatar agent={agent} size={34} />
+              <span className="flex min-w-0 flex-1 flex-col gap-1">
+                <strong className="truncate text-xs font-medium text-slate-200">{agent.display_name}</strong>
+                <span className="truncate text-[10px] text-slate-400">{agent.department}, {agent.role_key}</span>
+              </span>
+              <span className="text-[10px] text-slate-500">Level {agent.level}</span>
+            </button>
+          ))}
+        </div>
+      </section>
+
       {/* Dynamic Agent Hire Form */}
+      {hireError && <p className='app-inline-error' role='alert'>{hireError}</p>}
       <form onSubmit={handleHire} className="p-3 rounded-lg border border-slate-800 bg-slate-900/60 flex flex-col space-y-3">
         <span className="font-semibold text-slate-200 flex items-center gap-1.5 pb-2 border-b border-slate-800">
           <UserPlus size={14} className="text-emerald-400" /> Hire New Dynamic Agent
@@ -127,7 +153,7 @@ export const OrgEditorPanel: React.FC = () => {
         <button
           type="submit"
           disabled={isHiring}
-          className="mt-1 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-medium flex items-center justify-center gap-1.5 transition-all text-xs"
+          className="mt-1 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-medium flex items-center justify-center gap-1.5 transition-colors text-xs"
         >
           <Sparkles size={13} />
           {isHiring ? 'Allocating Desk...' : 'Deploy to Office'}
