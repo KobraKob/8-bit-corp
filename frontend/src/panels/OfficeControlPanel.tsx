@@ -127,9 +127,11 @@ export const OfficeControlPanel: React.FC = () => {
             <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-3">
               <div className="mb-2 flex items-center gap-2 text-xs font-semibold"><Users size={13} /> {selectedRoom || 'Boardroom'} session</div>
               <div className="mb-3 text-[10px] text-slate-500">Host: {employees.find((a) => a.id === actorId)?.display_name || 'Select employee'}</div>
-              <div className="flex gap-2">
-                <button disabled={busy || !actorId || meetingActive} onClick={() => void act('meeting_start')} className="flex-1 rounded-lg bg-emerald-500/15 px-2 py-2 text-[11px] text-emerald-300 disabled:opacity-40">Start meeting</button>
-                <button disabled={busy || !meetingActive} onClick={() => void act('meeting_end')} className="flex-1 rounded-lg bg-rose-500/15 px-2 py-2 text-[11px] text-rose-300 disabled:opacity-40">End meeting</button>
+              <div className="grid grid-cols-4 gap-1.5">
+                <button disabled={busy || !actorId || meetingActive} onClick={() => void act('meeting_start')} className="rounded-lg bg-emerald-500/15 px-2 py-2 text-[11px] text-emerald-300 disabled:opacity-40">Start</button>
+                <button disabled={busy || !actorId || !meetingActive} onClick={() => void act('meeting_join')} className="rounded-lg bg-cyan-500/15 px-2 py-2 text-[11px] text-cyan-300 disabled:opacity-40">Join</button>
+                <button disabled={busy || !actorId || !meetingActive} onClick={() => void act('meeting_leave')} className="rounded-lg bg-amber-500/15 px-2 py-2 text-[11px] text-amber-300 disabled:opacity-40">Leave</button>
+                <button disabled={busy || !meetingActive} onClick={() => void act('meeting_end')} className="rounded-lg bg-rose-500/15 px-2 py-2 text-[11px] text-rose-300 disabled:opacity-40">End</button>
               </div>
             </div>
             <div className="border-t border-slate-800 pt-3">
