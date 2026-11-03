@@ -40,7 +40,7 @@ class WorkspaceManager:
 
     def resolve_agent_path(self, project_id: str, agent_id: str, relative_path: str) -> Path:
         """Resolve an agent-private path, or an explicit shared/artifact path."""
-        normalized = relative_path.replace("\\", "/").lstrip("/")
+        normalized = relative_path.replace("\\", "/")
         if normalized.startswith("shared/"):
             return self.resolve_safe_path(project_id, normalized)
         if normalized.startswith("artifacts/"):
