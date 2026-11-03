@@ -53,7 +53,9 @@
 @theme {
   --font-sans: var(--font-body);
   --font-mono: var(--font-measured);
-  --color-white: var(--color-ink);\n  --color-black: var(--color-paper-3);\n  --color-slate-950: var(--color-paper);
+  --color-white: var(--color-ink);
+  --color-black: var(--color-paper-3);
+  --color-slate-950: var(--color-paper);
   --color-slate-900: var(--color-paper-2);
   --color-slate-800: var(--color-rule);
   --color-slate-700: var(--color-rule-2);
