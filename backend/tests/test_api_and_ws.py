@@ -8,18 +8,25 @@ from app.domain.org_model import seed_organization_from_config
 from app.events.event_bus import event_bus
 from app.events.event_types import EventType
 from app.main import app
+from app.orchestrator.scheduler import scheduler
 
 
 @pytest.mark.asyncio
-async def test_health_and_readiness_endpoints():
+async def test_health_and_readiness_endpoints(monkeypatch):
+    monkeypatch.setattr(scheduler, "running", False)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         resp = await client.get("/api/health")
         assert resp.status_code == 200
         assert resp.json()["status"] == "ok"
 
+        not_ready = await client.get("/api/ready")
+        assert not_ready.status_code == 503
+        assert not_ready.json()["ready"] is False
+
+        monkeypatch.setattr(scheduler, "running", True)
         ready = await client.get("/api/ready")
         assert ready.status_code == 200
-        assert "ready" in ready.json()
+        assert ready.json()["ready"] is True
 
 
 @pytest.mark.asyncio

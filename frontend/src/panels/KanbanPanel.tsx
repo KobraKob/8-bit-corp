@@ -19,6 +19,7 @@ export const KanbanPanel: React.FC = () => {
     { key: 'assigned', label: 'Assigned', color: 'border-blue-700 bg-blue-950/20' },
     { key: 'in_progress', label: 'In Progress', color: 'border-amber-700 bg-amber-950/20' },
     { key: 'in_review', label: 'In Review', color: 'border-indigo-700 bg-indigo-950/20' },
+    { key: 'reviewing', label: 'Reviewing', color: 'border-violet-700 bg-violet-950/20' },
     { key: 'done', label: 'Done', color: 'border-emerald-700 bg-emerald-950/20' },
     { key: 'blocked', label: 'Blocked', color: 'border-rose-700 bg-rose-950/20' },
   ];

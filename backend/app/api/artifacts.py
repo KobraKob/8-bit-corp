@@ -1,5 +1,5 @@
 from pathlib import Path
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse, PlainTextResponse
 from sqlalchemy import select
 
@@ -8,6 +8,13 @@ from app.db.session import async_session_factory
 from app.workspace.workspace_manager import workspace_manager
 
 router = APIRouter(prefix="/api/artifacts", tags=["artifacts"])
+
+
+@router.get("")
+async def list_artifacts(project_id: str = Query(...)):
+    async with async_session_factory() as session:
+        stmt = select(Artifact).where(Artifact.project_id == project_id).order_by(Artifact.created_at.desc())
+        return (await session.execute(stmt)).scalars().all()
 
 
 @router.get("/{artifact_id}")

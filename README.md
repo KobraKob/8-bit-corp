@@ -46,7 +46,7 @@
 
 ### Prerequisites
 - **Python 3.11+**
-- **Node.js 18+** & **pnpm** (or npm)
+- **Node.js 20.19+** & **pnpm** (or npm)
 
 ### 1. Backend Setup
 ```bash
@@ -57,14 +57,14 @@ backend\.venv\Scripts\activate
 # Linux/macOS:
 # source backend/.venv/bin/activate
 
-pip install -r backend/pyproject.toml
+python -m pip install -e "backend[dev]"
 ```
 
 Copy the environment template:
 ```bash
 cp .env.example .env
 ```
-*(Optional)* Add your `GROQ_API_KEY` to `.env`. Tests and offline mode run on `MockProvider` without any API keys or network.
+The template starts in offline mock mode. Set `LLM_PROVIDER=groq` and add your `GROQ_API_KEY` to `.env` when you want live model calls.
 
 ### 2. Frontend Setup
 ```bash
@@ -91,10 +91,10 @@ Open [http://localhost:5173](http://localhost:5173) in your browser.
 
 ## 🧪 Running Tests (100% Offline)
 
-All backend unit and integration tests run offline without network access or API keys using `MockProvider`:
+The backend test suite runs offline without API keys using `MockProvider`:
 
 ```bash
-# Run full backend test suite (26 tests)
+# Run the full backend test suite
 python -m pytest backend/tests
 ```
 
@@ -105,6 +105,10 @@ pnpm build
 ```
 
 ---
+
+## Security and deployment boundary
+
+The built-in `run_code` tool uses a restricted subprocess, not a hardened container boundary. Do not expose this development server to untrusted users or execute untrusted agent code on a production host. Before public deployment, isolate code execution in disposable containers with CPU, memory, filesystem, and network limits, and add authentication to the API.
 
 ## 🎮 Office Controls & Visuals
 
@@ -159,7 +163,7 @@ pixel-corp/
     src/
       api/                # Typed REST client
       state/              # Zustand store & WebSocket auto-reconnect client
-      office/             # Phaser 3 scene, EasyStar pathfinding, procedural pixel-art
+      office/             # Phaser scene, EasyStar pathfinding, procedural pixel-art
       panels/             # Task tree, Kanban, Inspector, Artifacts, Approvals, Org, Events
       app/                # App shell, left sidebar, right drawer, bottom usage meter
   docs/

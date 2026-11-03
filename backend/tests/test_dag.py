@@ -41,3 +41,21 @@ def test_dag_indirect_cycle_detected():
     ]
     with pytest.raises(CycleDetectedError, match="Cycle detected"):
         detect_cycles_in_subtasks(subtasks)
+
+
+def test_dag_resolves_titles_when_detecting_cycles():
+    subtasks = [
+        {"id": "first", "title": "First", "depends_on": ["Second"]},
+        {"id": "second", "title": "Second", "depends_on": ["First"]},
+    ]
+    with pytest.raises(CycleDetectedError, match="Cycle detected"):
+        detect_cycles_in_subtasks(subtasks)
+
+
+def test_dag_rejects_duplicate_titles():
+    subtasks = [
+        {"id": "first", "title": "Same title", "depends_on": []},
+        {"id": "second", "title": "Same title", "depends_on": []},
+    ]
+    with pytest.raises(CycleDetectedError, match="Duplicate"):
+        detect_cycles_in_subtasks(subtasks)

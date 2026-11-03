@@ -1,69 +1,72 @@
 import { useAppStore } from './useAppStore';
 
+const apiBase = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api').replace(/\/+$/, '');
+const defaultSocketUrl = apiBase.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:').replace(/\/api$/, '') + '/ws';
+
 class WebSocketClient {
   private ws: WebSocket | null = null;
-  private url = 'ws://localhost:8000/ws';
+  private url = import.meta.env.VITE_WS_URL || defaultSocketUrl;
   private reconnectInterval = 1000;
   private maxReconnectInterval = 10000;
   private isConnecting = false;
+  private shouldReconnect = true;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
   connect() {
+    this.shouldReconnect = true;
     if (this.isConnecting || (this.ws && this.ws.readyState === WebSocket.OPEN)) return;
-
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
     this.isConnecting = true;
     try {
       this.ws = new WebSocket(this.url);
-
       this.ws.onopen = () => {
-        console.log('[PixelCorp WS] Connected.');
         this.isConnecting = false;
         this.reconnectInterval = 1000;
-
-        // Send resume with last_event_id for seamless catch-up
-        const lastId = useAppStore.getState().lastEventId;
-        const activeProj = useAppStore.getState().activeProjectId;
-        this.ws?.send(
-          JSON.stringify({
-            type: 'resume',
-            last_event_id: lastId,
-            project_id: activeProj,
-          })
-        );
+        const { lastEventId, activeProjectId } = useAppStore.getState();
+        this.ws?.send(JSON.stringify({ type: 'resume', last_event_id: lastEventId, project_id: activeProjectId }));
       };
-
       this.ws.onmessage = (event) => {
         try {
-          const payload = JSON.parse(event.data);
-          useAppStore.getState().handleIncomingEvent(payload);
-        } catch (e) {
-          console.error('[PixelCorp WS] Error parsing event message:', e);
+          useAppStore.getState().handleIncomingEvent(JSON.parse(event.data));
+        } catch (error) {
+          console.error('[PixelCorp WS] Failed to process event:', error);
         }
       };
-
       this.ws.onclose = () => {
-        console.warn('[PixelCorp WS] Disconnected. Reconnecting in', this.reconnectInterval, 'ms...');
         this.isConnecting = false;
         this.ws = null;
-        setTimeout(() => this.connect(), this.reconnectInterval);
-        this.reconnectInterval = Math.min(this.reconnectInterval * 1.5, this.maxReconnectInterval);
+        this.scheduleReconnect();
       };
-
-      this.ws.onerror = (err) => {
-        console.error('[PixelCorp WS] Socket error:', err);
-        this.ws?.close();
-      };
-    } catch (err) {
-      console.error('[PixelCorp WS] Connection attempt failed:', err);
+      this.ws.onerror = () => this.ws?.close();
+    } catch (error) {
+      console.error('[PixelCorp WS] Connection attempt failed:', error);
       this.isConnecting = false;
-      setTimeout(() => this.connect(), this.reconnectInterval);
+      this.scheduleReconnect();
     }
   }
 
+  private scheduleReconnect() {
+    if (!this.shouldReconnect || this.reconnectTimer) return;
+    const delay = this.reconnectInterval;
+    this.reconnectInterval = Math.min(this.reconnectInterval * 1.5, this.maxReconnectInterval);
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      this.connect();
+    }, delay);
+  }
+
   disconnect() {
-    if (this.ws) {
-      this.ws.close();
-      this.ws = null;
+    this.shouldReconnect = false;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
     }
+    this.ws?.close();
+    this.ws = null;
+    this.isConnecting = false;
   }
 }
 

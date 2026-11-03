@@ -50,7 +50,7 @@ class ContextBuilder:
             dep_lines: List[str] = []
             for dep_id_or_title in self.task.depends_on_json:
                 stmt = select(Task).where(
-                    (Task.id == dep_id_or_title) | (Task.title == dep_id_or_title),
+                    Task.id == dep_id_or_title,
                     Task.project_id == self.task.project_id,
                 )
                 res = await session.execute(stmt)

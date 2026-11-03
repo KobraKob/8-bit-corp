@@ -60,7 +60,9 @@ class DelegationEngine:
         subtasks_data: List[Dict[str, Any]],
     ) -> List[Task]:
         """Validate DAG and caps, instantiate child tasks, and persist to database."""
-        # 1. Cycle detection
+        # 1. Validate identifiers and dependency graph before writing anything.
+        if not subtasks_data:
+            raise ValueError("At least one subtask is required for delegation.")
         detect_cycles_in_subtasks(subtasks_data)
 
         settings = get_app_settings()
@@ -90,14 +92,18 @@ class DelegationEngine:
                 guards=guards,
             )
 
-            # Map from title or temp_id to new real task ID
+            # Map every declared alias to one stable database task ID.
             title_to_id: Dict[str, str] = {}
             for item in subtasks_data:
-                key = item.get("id") or item.get("title")
-                title_to_id[key] = generate_id("tsk")
+                sub_id = generate_id("tsk")
+                for alias in {item.get("id"), item.get("temp_id"), item.get("title")}:
+                    if alias:
+                        if alias in title_to_id:
+                            raise ValueError(f"Duplicate delegated task identifier or title: {alias}")
+                        title_to_id[alias] = sub_id
 
             for item in subtasks_data:
-                sub_id = title_to_id[item.get("id") or item.get("title")]
+                sub_id = title_to_id[item.get("id") or item.get("temp_id") or item.get("title")]
                 role_key = item.get("role_key")
                 dept = item.get("department")
 
@@ -105,8 +111,30 @@ class DelegationEngine:
                 assignee_id = assignee.id if assignee else creator_agent_id
                 reviewer_id = assignee.reports_to_agent_id if assignee and assignee.reports_to_agent_id else creator_agent_id
 
-                # Resolve depends_on keys to real subtask IDs where possible
-                resolved_deps = [title_to_id.get(dep, dep) for dep in item.get("depends_on", [])]
+                # Resolve dependencies to stable IDs. Reject missing or ambiguous
+                # external references instead of leaving a task permanently queued.
+                resolved_deps = []
+                for dependency in item.get("depends_on", []):
+                    dependency_id = title_to_id.get(dependency)
+                    if dependency_id is None:
+                        matches = (await session.execute(
+                            select(Task).where(
+                                (Task.id == dependency) | (Task.title == dependency),
+                                Task.project_id == parent.project_id,
+                            )
+                        )).scalars().all()
+                        if len(matches) != 1:
+                            raise ValueError(
+                                f"Dependency '{dependency}' for '{item['title']}' "
+                                f"must resolve to exactly one task in this project."
+                            )
+                        dependency_id = matches[0].id
+                    if dependency_id == sub_id:
+                        raise ValueError(f"Task '{item['title']}' cannot depend on itself.")
+                    if dependency_id == parent_task_id:
+                        raise ValueError(f"Task '{item['title']}' cannot depend on its parent task.")
+                    if dependency_id not in resolved_deps:
+                        resolved_deps.append(dependency_id)
 
                 child_task = Task(
                     id=sub_id,

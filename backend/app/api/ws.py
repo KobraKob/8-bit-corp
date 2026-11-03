@@ -13,40 +13,45 @@ router = APIRouter(tags=["websocket"])
 async def websocket_event_stream(websocket: WebSocket):
     await websocket.accept()
     subscriber_queue = await event_bus.subscribe()
+    outbound_queue: asyncio.Queue[EventPayload] = asyncio.Queue()
+    replay_complete = asyncio.Event()
 
     async def client_listener():
-        """Listen for messages from client (e.g. resume requests with last_event_id)."""
+        """Queue replay events; the main coroutine remains the only socket writer."""
         try:
             while True:
                 data = await websocket.receive_text()
                 try:
-                    msg = json.loads(data)
-                    if msg.get("type") == "resume":
-                        last_id = msg.get("last_event_id", 0)
-                        project_id = msg.get("project_id")
-                        missed_events = await event_bus.get_events_after(last_event_id=last_id, project_id=project_id)
-                        for evt in missed_events:
-                            await websocket.send_text(evt.model_dump_json())
-                except Exception as parse_err:
-                    logger.warning(f"Failed to process client WS message: {parse_err}")
+                    message = json.loads(data)
+                    if message.get("type") == "resume":
+                        last_id = max(0, int(message.get("last_event_id", 0)))
+                        missed = await event_bus.get_events_after(last_event_id=last_id)
+                        for event in missed:
+                            await outbound_queue.put(event)
+                        replay_complete.set()
+                except (TypeError, ValueError, json.JSONDecodeError) as parse_error:
+                    logger.warning("Invalid WebSocket message: %s", parse_error)
         except WebSocketDisconnect:
-            pass
-        except Exception:
-            pass
+            return
+
+    async def relay_live_events():
+        await replay_complete.wait()
+        while True:
+            event = await subscriber_queue.get()
+            await outbound_queue.put(event)
 
     listener_task = asyncio.create_task(client_listener())
+    relay_task = asyncio.create_task(relay_live_events())
 
     try:
         while True:
-            try:
-                event_obj: EventPayload = await asyncio.wait_for(subscriber_queue.get(), timeout=0.5)
-                await websocket.send_text(event_obj.model_dump_json())
-            except asyncio.TimeoutError:
-                continue
+            event: EventPayload = await outbound_queue.get()
+            await websocket.send_text(event.model_dump_json())
     except WebSocketDisconnect:
         logger.info("WebSocket client disconnected.")
     except Exception as exc:
-        logger.warning(f"WebSocket connection closed: {exc}")
+        logger.warning("WebSocket connection closed: %s", exc)
     finally:
         listener_task.cancel()
+        relay_task.cancel()
         await event_bus.unsubscribe(subscriber_queue)

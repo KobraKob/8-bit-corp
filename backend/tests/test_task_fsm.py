@@ -8,6 +8,9 @@ def test_task_fsm_legal_transitions():
     assert TaskFSM.can_transition(TaskStatus.PENDING, TaskStatus.ASSIGNED)
     assert TaskFSM.can_transition(TaskStatus.ASSIGNED, TaskStatus.IN_PROGRESS)
     assert TaskFSM.can_transition(TaskStatus.IN_PROGRESS, TaskStatus.IN_REVIEW)
+    assert TaskFSM.can_transition(TaskStatus.IN_REVIEW, TaskStatus.REVIEWING)
+    assert TaskFSM.can_transition(TaskStatus.REVIEWING, TaskStatus.DONE)
+    assert TaskFSM.can_transition(TaskStatus.REVIEWING, TaskStatus.REVISION_REQUESTED)
     assert TaskFSM.can_transition(TaskStatus.IN_REVIEW, TaskStatus.DONE)
 
     # in_progress -> blocked -> in_progress

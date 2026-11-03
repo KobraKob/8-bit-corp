@@ -81,3 +81,21 @@ async def test_llm_router_structured_repair():
     assert result.objective == "Deploy backend"
     assert result.steps == ["build", "test"]
     assert len(mock_prov.call_history) == 2  # 1 initial + 1 repair call
+
+
+def test_router_does_not_silently_fallback_to_mock_for_unknown_provider():
+    router = LLMRouter()
+    with pytest.raises(ValueError, match="not configured"):
+        router.get_provider("missing-provider")
+
+
+@pytest.mark.asyncio
+async def test_explicit_mock_mode_runs_without_provider_keys(monkeypatch):
+    monkeypatch.setenv("LLM_PROVIDER", "mock")
+    await init_db()
+    router = LLMRouter()
+    response = await router.execute_chat(
+        tier="fast",
+        messages=[ChatMessage(role="user", content="Return a short test response.")],
+    )
+    assert response.text

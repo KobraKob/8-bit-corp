@@ -131,7 +131,7 @@ class AgentRuntime:
                     )
 
                     # Check if terminal tool was called
-                    if tc.name in ("submit_deliverable", "delegate", "review_decision", "report_blocked", "request_help"):
+                    if tc.name in ("submit_deliverable", "delegate", "report_blocked"):
                         if tc.name == "submit_deliverable" and not tc.arguments.get("artifact_ids") and created_artifact_ids:
                             tc.arguments["artifact_ids"] = list(created_artifact_ids)
                         terminal_action = {"tool": tc.name, "arguments": tc.arguments, "result": res}

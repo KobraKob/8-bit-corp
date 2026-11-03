@@ -16,6 +16,7 @@ class EventType(str, Enum):
     TASK_APPROVED = "task.approved"
     TASK_BLOCKED = "task.blocked"
     TASK_FAILED = "task.failed"
+    TASK_CANCELLED = "task.cancelled"
     TASK_DONE = "task.done"
 
     # Agent actions

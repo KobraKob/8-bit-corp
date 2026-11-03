@@ -7,7 +7,7 @@ function countActiveTasks(nodes: TaskTreeNode[]): number {
   let count = 0;
   function walk(items: TaskTreeNode[]) {
     for (const item of items) {
-      if (item.status === 'in_progress' || item.status === 'integrating') {
+      if (item.status === 'in_progress' || item.status === 'integrating' || item.status === 'reviewing') {
         count++;
       }
       if (item.children) walk(item.children);

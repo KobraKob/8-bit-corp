@@ -20,6 +20,7 @@ const statusColors: Record<string, string> = {
   in_progress: 'text-amber-300 bg-amber-950/80 border-amber-600 animate-pulse font-bold',
   integrating: 'text-purple-300 bg-purple-950/80 border-purple-600 animate-pulse font-bold',
   in_review: 'text-indigo-300 bg-indigo-950/80 border-indigo-600 font-bold',
+  reviewing: 'text-violet-300 bg-violet-950/80 border-violet-600 font-bold animate-pulse',
   revision_requested: 'text-orange-400 bg-orange-950/60 border-orange-800',
   done: 'text-emerald-400 bg-emerald-950/60 border-emerald-800',
   blocked: 'text-rose-400 bg-rose-950/60 border-rose-800',
@@ -32,7 +33,7 @@ function TaskNodeItem({ node }: { node: TaskTreeNode }) {
   const isSelected = selectedTaskId === node.id;
   const assignee = agents.find((a) => a.id === node.assignee_agent_id);
 
-  const isInProgress = node.status === 'in_progress' || node.status === 'integrating';
+  const isInProgress = node.status === 'in_progress' || node.status === 'integrating' || node.status === 'reviewing';
   const isDone = node.status === 'done';
 
   return (
@@ -110,7 +111,7 @@ function countTreeNodes(nodes: TaskTreeNode[]): { total: number; done: number; i
     for (const item of items) {
       total++;
       if (item.status === 'done') done++;
-      if (item.status === 'in_progress' || item.status === 'integrating') inProgress++;
+      if (item.status === 'in_progress' || item.status === 'integrating' || item.status === 'reviewing') inProgress++;
       if (item.children) walk(item.children);
     }
   }

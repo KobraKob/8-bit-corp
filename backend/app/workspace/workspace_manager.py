@@ -1,6 +1,7 @@
 import os
 import shutil
-from pathlib import Path
+from pathlib import Path, PurePosixPath
+import re
 from typing import List, Dict, Any, Optional
 
 from app.core.config import get_app_settings
@@ -30,13 +31,18 @@ class WorkspaceManager:
         """Resolve a relative path inside project directory, blocking directory traversal and absolute escapes."""
         proj_dir = self.get_project_dir(project_id)
         
-        # Check for disallowed absolute path attempts or malicious escapes
-        p = Path(relative_path)
-        if p.is_absolute() or relative_path.startswith("/") or relative_path.startswith("\\"):
-            raise SecurityViolationError(f"Absolute paths not allowed in workspace: '{relative_path}'")
+        # Normalize Windows separators before validating, even on POSIX hosts.
+        normalized_path = relative_path.replace("\\", "/")
+        if (
+            Path(normalized_path).is_absolute()
+            or normalized_path.startswith("/")
+            or re.match(r"^[A-Za-z]:", normalized_path)
+            or ".." in PurePosixPath(normalized_path).parts
+        ):
+            raise SecurityViolationError(f"Unsafe workspace path: '{relative_path}'")
 
-        # Resolve path
-        target = (proj_dir / relative_path).resolve()
+        # Resolve path after normalization; this also catches existing symlink escapes.
+        target = (proj_dir / normalized_path).resolve()
 
         # Security check: target must strictly be inside proj_dir
         try:

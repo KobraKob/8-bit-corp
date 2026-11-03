@@ -1,6 +1,7 @@
 import asyncio
 import pytest
 from app.db.session import init_db, async_session_factory
+from app.core.config import get_app_settings
 from app.events.event_bus import event_bus
 from app.events.event_types import EventType
 from app.domain.org_model import seed_organization_from_config, hire_dynamic_agent
@@ -42,7 +43,8 @@ async def test_org_seeding_and_dynamic_hire():
     async with async_session_factory() as session:
         result = await session.execute(select(Agent))
         agents = result.scalars().all()
-        assert len(agents) > 10
+        assert len(agents) == 46
+        assert sum(1 for agent in agents if agent.reports_to_agent_id) == 45
 
         # Verify CEO exists
         ceo = next((a for a in agents if a.role_key == "ceo"), None)
@@ -63,3 +65,22 @@ async def test_org_seeding_and_dynamic_hire():
     assert dynamic_agent.id is not None
     assert dynamic_agent.role_key == "web3_rust_specialist"
     assert dynamic_agent.department == "Special Projects"
+
+
+def test_org_config_has_46_roles_and_valid_reporting_tree():
+    roles = get_app_settings().org.roles
+    assert sum(role.count for role in roles.values()) == 46
+    assert roles["ceo"].reports_to is None
+
+    for role_key, role in roles.items():
+        if role_key == "ceo":
+            continue
+        assert role.reports_to in roles, f"{role_key} reports to missing role {role.reports_to}"
+        assert roles[role.reports_to].level < role.level, f"{role_key} must report upward"
+
+        visited = set()
+        current = role_key
+        while current:
+            assert current not in visited, f"Reporting cycle detected at {current}"
+            visited.add(current)
+            current = roles[current].reports_to

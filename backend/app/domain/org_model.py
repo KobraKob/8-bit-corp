@@ -87,7 +87,7 @@ async def seed_organization_from_config(org_config: Optional[OrgConfig] = None) 
                     subordinate_agent.reports_to_agent_id = manager_agent.id
 
         await session.commit()
-        logger.info(f"Successfully seeded {len(created_agents)} corporate agents.")
+        logger.info(f"Successfully seeded {sum(role.count for role in org_config.roles.values())} corporate agents across {len(created_agents)} roles.")
 
 
 async def hire_dynamic_agent(

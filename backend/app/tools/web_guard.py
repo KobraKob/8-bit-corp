@@ -1,7 +1,7 @@
 import ipaddress
 import re
 import socket
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urljoin, urlencode
 import httpx
 
 from app.core.errors import SecurityViolationError
@@ -24,15 +24,16 @@ def is_private_or_loopback_host(hostname: str) -> bool:
         pass
 
     try:
-        # Resolve hostname to IPv4 addresses
-        resolved_ips = socket.getaddrinfo(hostname, None, socket.AF_INET)
+        # Check every resolved address family. Treat non-global ranges as unsafe.
+        resolved_ips = socket.getaddrinfo(hostname, None)
+        if not resolved_ips:
+            return True
         for family, socktype, proto, canonname, sockaddr in resolved_ips:
-            ip_str = sockaddr[0]
-            ip = ipaddress.ip_address(ip_str)
-            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+            ip = ipaddress.ip_address(sockaddr[0])
+            if not ip.is_global:
                 return True
     except Exception:
-        # If unresolvable or error, treat as unsafe
+        # If unresolvable or error, treat as unsafe.
         return True
 
     return False
@@ -53,29 +54,32 @@ def validate_url_safe(url: str) -> None:
 
 async def safe_fetch_url(url: str, max_bytes: int = 50000, timeout_sec: float = 10.0) -> str:
     """Safely fetch web page text with SSRF validation, size cap, and timeout."""
-    validate_url_safe(url)
+    current_url = url
+    async with httpx.AsyncClient(timeout=timeout_sec, follow_redirects=False, trust_env=False) as client:
+        for _ in range(6):
+            validate_url_safe(current_url)
+            response = await client.get(current_url)
+            if response.is_redirect:
+                location = response.headers.get("location")
+                if not location:
+                    raise SecurityViolationError("Redirect response did not include a location.")
+                current_url = urljoin(current_url, location)
+                continue
+            response.raise_for_status()
+            page_text = response.text[:max_bytes]
+            clean_text = re.sub(r"<[^>]+>", " ", page_text)
+            return re.sub(r"\s+", " ", clean_text).strip()
 
-    async with httpx.AsyncClient(timeout=timeout_sec, follow_redirects=True) as client:
-        resp = await client.get(url)
-        resp.raise_for_status()
-
-        # Check final redirected URL as well
-        validate_url_safe(str(resp.url))
-
-        text = resp.text[:max_bytes]
-        # Strip excessive HTML tags for clean agent context
-        clean_text = re.sub(r"<[^>]+>", " ", text)
-        clean_text = re.sub(r"\s+", " ", clean_text).strip()
-        return clean_text
+    raise SecurityViolationError("Too many redirects while fetching the requested URL.")
 
 
 async def search_web(query: str, max_results: int = 5) -> list[dict]:
     """Execute search query. Uses DuckDuckGo HTML or returns structured mockup if offline."""
     # Free search simulation or DuckDuckGo if reachable
     try:
-        url = f"https://html.duckduckgo.com/html/?q={httpx.URL(query)}"
-        validate_url_safe("html.duckduckgo.com")
-        async with httpx.AsyncClient(timeout=5.0) as client:
+        url = "https://html.duckduckgo.com/html/?" + urlencode({"q": query})
+        validate_url_safe(url)
+        async with httpx.AsyncClient(timeout=5.0, follow_redirects=False, trust_env=False) as client:
             resp = await client.get(url)
             if resp.status_code == 200:
                 # Basic scrape
@@ -84,7 +88,5 @@ async def search_web(query: str, max_results: int = 5) -> list[dict]:
     except Exception:
         pass
 
-    # Clean fallback for offline testing
-    return [
-        {"title": f"Search result for '{query}'", "snippet": f"Comprehensive corporate reference on {query}."}
-    ]
+    # Never fabricate search results when the provider is unavailable.
+    return []

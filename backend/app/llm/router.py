@@ -41,21 +41,29 @@ class LLMRouter:
             self.providers["mock"] = self.override_provider
             return
 
-        # Setup Mock Provider
-        self.providers["mock"] = MockProvider()
-
-        # Setup Groq Provider
-        groq_cfg = self.settings.models.providers.get("groq")
-        if groq_cfg:
-            api_key = os.getenv(groq_cfg.api_key_env, "")
-            self.providers["groq"] = GroqProvider(base_url=groq_cfg.base_url, api_key=api_key)
+        # Build every configured provider through the shared OpenAI-compatible adapter.
+        for name, provider_cfg in self.settings.models.providers.items():
+            if name == "mock":
+                self.providers[name] = MockProvider()
+                continue
+            api_key = os.getenv(provider_cfg.api_key_env, "")
+            if name == "groq":
+                self.providers[name] = GroqProvider(base_url=provider_cfg.base_url, api_key=api_key)
+            else:
+                self.providers[name] = GenericOpenAICompatProvider(
+                    base_url=provider_cfg.base_url,
+                    api_key=api_key,
+                )
 
     def get_provider(self, name: str) -> LLMProvider:
         if self.override_provider:
             return self.override_provider
         if name in self.providers:
             return self.providers[name]
-        return self.providers.get("mock", MockProvider())
+        raise ValueError(
+            f"LLM provider '{name}' is not configured. Add it to config/models.yaml; "
+            "the router will not silently substitute the mock provider."
+        )
 
     async def execute_chat(
         self,
@@ -72,7 +80,7 @@ class LLMRouter:
             tier_cfg = self.settings.models.tiers.get("smart")
 
         models_to_try = [tier_cfg.model] + tier_cfg.fallbacks if tier_cfg else ["mock-model"]
-        provider_name = tier_cfg.provider if tier_cfg else "mock"
+        provider_name = os.getenv("LLM_PROVIDER", tier_cfg.provider if tier_cfg else self.settings.models.default_provider).strip()
         provider = self.get_provider(provider_name)
 
         # Inspect calling agent for manager priority & dedicated custom API key
@@ -92,13 +100,18 @@ class LLMRouter:
 
         for model_name in models_to_try:
             # Select key for this agent from the pool
-            api_key, key_alias = key_pool.select_key_for_agent(
-                agent_level=agent_level,
-                dedicated_key=agent_dedicated_key,
-            )
+            if provider_name == "groq":
+                api_key, key_alias = key_pool.select_key_for_agent(
+                    agent_level=agent_level,
+                    dedicated_key=agent_dedicated_key,
+                )
+            else:
+                provider_cfg = self.settings.models.providers[provider_name]
+                api_key = agent_dedicated_key or os.getenv(provider_cfg.api_key_env, "") or "no-key-set"
+                key_alias = f"{provider_name}_agent" if agent_dedicated_key else f"{provider_name}_default"
 
             # Check rate limiting for this specific key
-            if self.override_provider:
+            if self.override_provider or provider_name == "mock":
                 acquired = True
             else:
                 acquired = await rate_limiter.acquire(
