@@ -6,15 +6,19 @@ import { RightDrawer } from './RightDrawer';
 import { BottomBar } from './BottomBar';
 import { ProjectIntakeModal } from '../panels/ProjectIntakeModal';
 import { LiveActivityHUD } from '../panels/LiveActivityHUD';
+import { OfficeControlPanel } from '../panels/OfficeControlPanel';
 import { useAppStore } from '../state/useAppStore';
 import { wsClient } from '../state/wsClient';
+import { PanelRight, X } from 'lucide-react';
 
 export const Shell: React.FC = () => {
   const officeContainerRef = useRef<HTMLDivElement>(null);
   const gameRef = useRef<Phaser.Game | null>(null);
 
   const [isIntakeOpen, setIsIntakeOpen] = useState(false);
-  const { fetchProjects, fetchAgents, fetchApprovals, fetchUsage } = useAppStore();
+  const [isPanelsOpen, setIsPanelsOpen] = useState(false);
+  const { fetchProjects, fetchAgents, fetchApprovals, fetchUsage, agents } = useAppStore();
+  const hasAgents = agents.length > 0;
 
   useEffect(() => {
     // Initial fetch of application state
@@ -44,7 +48,7 @@ export const Shell: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (!officeContainerRef.current || gameRef.current) return;
+    if (!officeContainerRef.current || gameRef.current || !hasAgents) return;
 
     // Initialize Phaser 3 Pixel Office Game
     const config: Phaser.Types.Core.GameConfig = {
@@ -72,31 +76,41 @@ export const Shell: React.FC = () => {
       gameRef.current?.destroy(true);
       gameRef.current = null;
     };
-  }, []);
+  }, [hasAgents]);
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-slate-950 font-sans text-slate-100">
       {/* Main 3-column Layout */}
       <div className="flex flex-1 overflow-hidden">
         {/* Left Sidebar */}
-        <LeftSidebar onOpenIntake={() => setIsIntakeOpen(true)} />
+        <div className="hidden shrink-0 lg:flex"><LeftSidebar onOpenIntake={() => setIsIntakeOpen(true)} /></div>
 
         {/* Center: Pixel Office Canvas with Live HUD */}
-        <div className="flex-1 relative overflow-hidden bg-[#090d16]">
+        <div className="relative min-w-0 flex-1 overflow-hidden bg-[#090d16]">
           {/* Top Live Progress & Status HUD */}
           <LiveActivityHUD />
+
+          <OfficeControlPanel />
 
           {/* Phaser Canvas */}
           <div ref={officeContainerRef} className="w-full h-full" />
 
+          <button onClick={() => setIsPanelsOpen(true)} className="absolute bottom-12 right-2 z-30 flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-950/90 px-3 py-2 text-xs text-slate-200 shadow-xl 2xl:hidden">
+            <PanelRight size={14} /> Control panels
+          </button>
+          {isPanelsOpen && <div className="absolute inset-y-0 right-0 z-40 w-[min(420px,94vw)] shadow-2xl 2xl:hidden">
+            <button onClick={() => setIsPanelsOpen(false)} className="absolute right-3 top-3 z-50 rounded-md border border-slate-700 bg-slate-900 p-2 text-slate-200" aria-label="Close control panels"><X size={15} /></button>
+            <RightDrawer />
+          </div>}
+
           {/* Subtle controls overlay tooltip */}
           <div className="absolute bottom-2 left-2 bg-slate-950/80 backdrop-blur-sm border border-slate-800/80 px-2.5 py-1 rounded text-[10px] font-mono text-slate-400 pointer-events-none select-none z-10">
-            Click agent to inspect • Right-drag to pan • Scroll to zoom
+            Click employee or room • Right-drag to pan • Scroll to zoom
           </div>
         </div>
 
         {/* Right Drawer */}
-        <RightDrawer />
+        <div className="hidden shrink-0 2xl:flex"><RightDrawer /></div>
       </div>
 
       {/* Bottom Status / Payroll Bar */}

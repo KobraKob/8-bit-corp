@@ -14,6 +14,7 @@ interface AgentSprite {
   desk?: DeskPosition;
   bubbleContainer?: Phaser.GameObjects.Container;
   currentPath?: Array<{ x: number; y: number }>;
+  phase: number;
 }
 
 export class OfficeScene extends Phaser.Scene {
@@ -25,6 +26,8 @@ export class OfficeScene extends Phaser.Scene {
   private panStartY = 0;
   private handledEventIds = new Set<number>();
   private unsubscribeStore?: () => void;
+  private lastReplayVersion = 0;
+  private focusedRoom: string | null = null;
 
   constructor() {
     super({ key: 'OfficeScene' });
@@ -65,6 +68,12 @@ export class OfficeScene extends Phaser.Scene {
     this.unsubscribeStore = useAppStore.subscribe((state) => {
       this.syncAgents(state.agents);
       this.processNewEvents(state.events);
+      if (state.selectedRoom && state.selectedRoom !== this.focusedRoom) this.focusRoom(state.selectedRoom);
+      if (state.replayEventId && state.replayVersion !== this.lastReplayVersion) {
+        const replay = state.events.find((event) => event.id === state.replayEventId);
+        if (replay) this.replayEvent(replay);
+        this.lastReplayVersion = state.replayVersion;
+      }
     });
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.unsubscribeStore?.());
     this.events.once(Phaser.Scenes.Events.DESTROY, () => this.unsubscribeStore?.());
@@ -84,14 +93,19 @@ export class OfficeScene extends Phaser.Scene {
 
     // Draw Room Floors & Walls
     for (const room of this.layout.rooms) {
-      // Floor tint
-      graphics.fillStyle(room.floorColor, 0.4);
+      // Department identity: tinted floor, accent perimeter, and room-specific lighting.
+      graphics.fillStyle(room.floorColor, 0.38);
       graphics.fillRect(
         room.bounds.x * ts,
         room.bounds.y * ts,
         room.bounds.width * ts,
         room.bounds.height * ts
       );
+
+      graphics.lineStyle(2, room.wallColor, 0.9);
+      graphics.strokeRect(room.bounds.x * ts + 2, room.bounds.y * ts + 2, room.bounds.width * ts - 4, room.bounds.height * ts - 4);
+      graphics.fillStyle(room.wallColor, 0.12);
+      graphics.fillRect(room.bounds.x * ts + 3, room.bounds.y * ts + 18, room.bounds.width * ts - 6, 5);
 
       // Room Title Sign
       this.add
@@ -102,7 +116,18 @@ export class OfficeScene extends Phaser.Scene {
           backgroundColor: '#0f172a',
           padding: { x: 3, y: 1 },
         })
-        .setDepth(2);
+        .setDepth(4);
+
+      const roomZone = this.add.zone(
+        (room.bounds.x + room.bounds.width / 2) * ts,
+        (room.bounds.y + room.bounds.height / 2) * ts,
+        room.bounds.width * ts,
+        room.bounds.height * ts
+      ).setInteractive({ useHandCursor: true }).setDepth(0);
+      roomZone.on('pointerdown', () => {
+        useAppStore.getState().setSelectedRoom(room.name);
+        this.focusRoom(room.name);
+      });
 
       // Walls
       for (let x = room.bounds.x; x < room.bounds.x + room.bounds.width; x++) {
@@ -188,8 +213,9 @@ export class OfficeScene extends Phaser.Scene {
         agent,
         container,
         sprite,
-        state: 'working',
+        state: 'idle',
         desk,
+        phase: Math.random() * Math.PI * 2,
       });
     }
   }
@@ -243,6 +269,7 @@ export class OfficeScene extends Phaser.Scene {
   private showAgentBubble(agentId: string, texture: 'bubble_thinking' | 'bubble_blocked', durationMs = 3000) {
     const entry = this.agentSprites.get(agentId);
     if (!entry) return;
+    entry.state = texture === 'bubble_thinking' ? 'thinking' : 'blocked';
 
     if (entry.bubbleContainer) {
       entry.bubbleContainer.destroy();
@@ -257,6 +284,7 @@ export class OfficeScene extends Phaser.Scene {
       if (entry.bubbleContainer === bubbleContainer) {
         bubbleContainer.destroy(true);
         entry.bubbleContainer = undefined;
+        if (entry.state === 'thinking' || entry.state === 'blocked') this.setAgentState(agentId, 'idle');
       }
     });
   }
@@ -274,7 +302,7 @@ export class OfficeScene extends Phaser.Scene {
         return;
       }
 
-      entry.state = 'walking';
+      this.setAgentState(agentId, 'walking');
       let stepIndex = 0;
 
       const stepTimer = this.time.addEvent({
@@ -285,7 +313,7 @@ export class OfficeScene extends Phaser.Scene {
           entry.container.setPosition(pt.x * 16 + 8, pt.y * 16 + 8);
           stepIndex++;
           if (stepIndex >= path.length) {
-            entry.state = 'working';
+            this.setAgentState(agentId, 'idle');
             onArrival?.();
           }
         },
@@ -321,6 +349,34 @@ export class OfficeScene extends Phaser.Scene {
       }
       if (event.type === 'agent.thinking' && event.agent_id) {
         this.showAgentBubble(event.agent_id, 'bubble_thinking');
+      } else if ((event.type === 'agent.tool_call' || event.type === 'task.started') && event.agent_id) {
+        this.setAgentState(event.agent_id, 'working');
+      } else if ((event.type === 'task.review_requested' || event.type === 'task.submitted') && event.agent_id) {
+        this.setAgentState(event.agent_id, 'reviewing');
+      } else if ((event.type === 'task.done' || event.type === 'task.approved') && event.agent_id) {
+        this.setAgentState(event.agent_id, 'celebrating');
+        this.time.delayedCall(1800, () => this.setAgentState(event.agent_id!, 'idle'));
+      } else if ((event.type === 'office.meeting.started' || event.type === 'office.meeting.joined') && event.agent_id) {
+        const room = String(event.payload?.room || 'Boardroom');
+        const bounds = this.layout.rooms.find((item) => item.name === room)?.bounds;
+        if (bounds) this.walkAgentTo(event.agent_id, Math.floor(bounds.x + bounds.width / 2), Math.floor(bounds.y + bounds.height / 2), () => this.setAgentState(event.agent_id!, 'in_meeting'));
+      } else if (event.type === 'office.meeting.ended') {
+        for (const [participantId, participant] of this.agentSprites) {
+          if (participant.state === 'in_meeting' && participant.desk) {
+            this.walkAgentTo(participantId, participant.desk.tileX, participant.desk.tileY);
+          }
+        }
+      } else if (event.type === 'office.meeting.left' && event.agent_id) {
+        const desk = this.agentSprites.get(event.agent_id)?.desk;
+        if (desk) this.walkAgentTo(event.agent_id, desk.tileX, desk.tileY);
+      } else if (event.type === 'office.conversation' && event.agent_id) {
+        this.showMessageBubble(event.agent_id, String(event.payload?.text || 'Message sent'));
+      } else if (event.type === 'office.handoff' && event.agent_id && event.payload?.to_agent_id) {
+        const recipient = this.agentSprites.get(String(event.payload.to_agent_id));
+        if (recipient?.desk) this.walkAgentTo(event.agent_id, recipient.desk.tileX, recipient.desk.tileY, () => {
+          const ownDesk = this.agentSprites.get(event.agent_id!)?.desk;
+          if (ownDesk) this.walkAgentTo(event.agent_id!, ownDesk.tileX, ownDesk.tileY);
+        });
       } else if ((event.type === 'task.blocked' || event.type === 'task.failed') && event.agent_id) {
         this.showAgentBubble(event.agent_id, 'bubble_blocked', 5000);
       } else if (event.type === 'project.completed') {
@@ -340,7 +396,82 @@ export class OfficeScene extends Phaser.Scene {
     }
   }
 
-  update() {
-    // 60 fps update loop
+  private setAgentState(agentId: string, state: AgentActionState) {
+    const entry = this.agentSprites.get(agentId);
+    if (!entry) return;
+    entry.state = state;
+    const tint = state === 'thinking' ? 0x93c5fd
+      : state === 'reviewing' ? 0xfbbf24
+      : state === 'blocked' ? 0xf87171
+      : state === 'celebrating' ? 0x86efac
+      : 0xffffff;
+    entry.sprite.setTint(tint);
+    if (state === 'celebrating') {
+      this.tweens.add({ targets: entry.sprite, scaleX: 1.35, scaleY: 1.35, duration: 180, yoyo: true, repeat: 2 });
+    }
+  }
+
+  private showMessageBubble(agentId: string, message: string) {
+    const entry = this.agentSprites.get(agentId);
+    if (!entry) return;
+    entry.bubbleContainer?.destroy(true);
+    const bubble = this.add.container(0, -25);
+    const label = this.add.text(0, 0, message.slice(0, 42), {
+      fontFamily: 'monospace', fontSize: '7px', color: '#0f172a',
+      backgroundColor: '#e0f2fe', padding: { x: 4, y: 3 }, align: 'center',
+    }).setOrigin(0.5, 1);
+    bubble.add(label);
+    entry.container.add(bubble);
+    entry.bubbleContainer = bubble;
+    this.time.delayedCall(3200, () => {
+      if (entry.bubbleContainer === bubble) {
+        bubble.destroy(true);
+        entry.bubbleContainer = undefined;
+      }
+    });
+  }
+
+  private focusRoom(roomName: string) {
+    const room = this.layout.rooms.find((item) => item.name === roomName);
+    if (!room) return;
+    this.focusedRoom = roomName;
+    this.cameras.main.pan(
+      (room.bounds.x + room.bounds.width / 2) * 16,
+      (room.bounds.y + room.bounds.height / 2) * 16,
+      450,
+      'Sine.easeInOut'
+    );
+    this.cameras.main.zoomTo(2.15, 450);
+  }
+
+  private replayEvent(event: { id: number; type: string; agent_id?: string | null; payload: any }) {
+    if (event.agent_id && this.agentSprites.has(event.agent_id)) {
+      if (event.type === 'agent.thinking') this.showAgentBubble(event.agent_id, 'bubble_thinking');
+      else if (event.type === 'task.review_requested') this.setAgentState(event.agent_id, 'reviewing');
+      else if (event.type === 'task.blocked' || event.type === 'task.failed') this.showAgentBubble(event.agent_id, 'bubble_blocked');
+      else if (event.type === 'agent.tool_call' || event.type === 'task.started') this.setAgentState(event.agent_id, 'working');
+      else if (event.type === 'office.meeting.started' || event.type === 'office.meeting.joined') {
+        const room = this.layout.rooms.find((item) => item.name === String(event.payload?.room || 'Boardroom'));
+        if (room) this.walkAgentTo(event.agent_id, Math.floor(room.bounds.x + room.bounds.width / 2), Math.floor(room.bounds.y + room.bounds.height / 2), () => this.setAgentState(event.agent_id!, 'in_meeting'));
+      }
+      else if (event.type === 'office.meeting.ended' || event.type === 'office.meeting.left') {
+        const desk = this.agentSprites.get(event.agent_id)?.desk;
+        if (desk) this.walkAgentTo(event.agent_id, desk.tileX, desk.tileY);
+      }
+      else if (event.type === 'office.conversation') this.showMessageBubble(event.agent_id, String(event.payload?.text || 'Message'));
+      else if (event.type === 'office.handoff' && event.payload?.to_agent_id) {
+        const target = this.agentSprites.get(String(event.payload.to_agent_id));
+        if (target?.desk) this.walkAgentTo(event.agent_id, target.desk.tileX, target.desk.tileY);
+      }
+    }
+    if (event.type === 'project.completed') this.triggerConfetti();
+    if (event.payload?.room) this.focusRoom(String(event.payload.room));
+  }
+
+  update(time: number) {
+    for (const entry of this.agentSprites.values()) {
+      const amount = entry.state === 'working' ? 0.45 : entry.state === 'idle' ? 0.8 : 0.25;
+      if (entry.state !== 'walking') entry.sprite.y = Math.sin(time / 240 + entry.phase) * amount;
+    }
   }
 }

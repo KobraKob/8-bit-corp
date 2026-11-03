@@ -9,6 +9,7 @@ import {
   TaskLogEntry,
   UsageSummary,
   KeyStatus,
+  OfficeAction,
 } from './types';
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api').replace(/\/+$/, '');
@@ -95,6 +96,9 @@ export const apiClient = {
     request<{ success: boolean; message: string }>(`/keys/${alias}`, {
       method: 'DELETE',
     }),
+
+  // Office interactions
+  officeAction: (data: OfficeAction) => request<{ success: boolean; event_id?: number; message_id?: string }>('/office/actions', { method: 'POST', body: JSON.stringify(data) }),
 
   // Events
   getEvents: (after = 0, projectId?: string) => {

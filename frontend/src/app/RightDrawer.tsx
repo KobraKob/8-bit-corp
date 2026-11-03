@@ -34,7 +34,7 @@ export const RightDrawer: React.FC = () => {
   const { activeDrawerTab, setActiveDrawerTab, approvals } = useAppStore();
 
   return (
-    <div className="w-[420px] bg-slate-950 border-l border-slate-800 flex flex-col h-screen select-none">
+    <div className="h-full w-full max-w-[420px] bg-slate-950 border-l border-slate-800 flex flex-col select-none">
       {/* Tab Navigation */}
       <div className="flex border-b border-slate-800 bg-slate-900/60 p-1 gap-1 overflow-x-auto">
         {TABS.map((tab) => {

@@ -108,6 +108,15 @@ export interface Approval {
   decided_at?: string | null;
 }
 
+export interface OfficeAction {
+  action: 'meeting_start' | 'meeting_end' | 'meeting_join' | 'meeting_leave' | 'message' | 'handoff';
+  agent_id: string;
+  target_agent_id?: string;
+  task_id?: string;
+  room?: string;
+  message?: string;
+}
+
 export interface EventPayload {
   id: number;
   ts: string;

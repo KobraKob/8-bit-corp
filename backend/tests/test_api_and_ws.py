@@ -78,6 +78,25 @@ async def test_project_and_task_api_workflow():
         assert agents_resp.status_code == 200
         assert len(agents_resp.json()) > 10
 
+        actor, recipient = agents_resp.json()[:2]
+        chat_resp = await client.post("/api/office/actions", json={
+            "action": "message", "agent_id": actor["id"],
+            "target_agent_id": recipient["id"], "message": "Reviewing the brief.",
+            "room": "Engineering",
+        })
+        assert chat_resp.status_code == 200
+        meeting_resp = await client.post("/api/office/actions", json={
+            "action": "meeting_start", "agent_id": actor["id"], "room": "Boardroom",
+        })
+        assert meeting_resp.status_code == 200
+        handoff_resp = await client.post("/api/office/actions", json={
+            "action": "handoff", "agent_id": actor["id"],
+            "target_agent_id": recipient["id"], "task_id": task_data["id"],
+        })
+        assert handoff_resp.status_code == 200
+        updated_task = await client.get(f"/api/tasks/{task_data['id']}")
+        assert updated_task.json()["task"]["assignee_agent_id"] == recipient["id"]
+
         # 6. Usage endpoint
         usage_resp = await client.get("/api/usage")
         assert usage_resp.status_code == 200
