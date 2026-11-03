@@ -195,3 +195,17 @@ pixel-corp/
   DECISIONS.md            # Engineering decisions log
   build.md                # Project mission & architecture blueprint
 ```
+
+
+## Virtual office controls
+
+The office view now streams employee activity from the event bus and animates working, thinking, reviewing, blocked, meeting, walking, and idle states. Department rooms use distinct floor and accent palettes. Select a room on the map or in the Rooms panel to focus the camera.
+
+The Virtual Office panel provides:
+- Department filters and employee activity status.
+- Meeting start, join, leave, and end events.
+- Persistent employee-to-employee messages.
+- Queued-task handoff with an atomic assignment update. Tasks already held by a worker lease cannot be transferred.
+- A chronological event timeline with single-event replay.
+
+Office actions are exposed at `POST /api/office/actions`. The existing WebSocket event stream delivers meeting, conversation, and handoff activity to connected clients. On narrow screens, open **Control panels** to access the task drawer without squeezing the office canvas.
