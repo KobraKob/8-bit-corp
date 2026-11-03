@@ -38,6 +38,8 @@ interface AppState {
   isPaused: boolean;
   isLoading: boolean;
   lastEventId: number;
+  selectedRoom: string | null;
+  replayEventId: number | null;
 
   // Actions
   fetchProjects: () => Promise<void>;
@@ -52,6 +54,8 @@ interface AppState {
   setSelectedArtifact: (art: Artifact | null) => void;
   setActiveDrawerTab: (tab: ActiveDrawerTab) => void;
   togglePause: () => void;
+  setSelectedRoom: (room: string | null) => void;
+  setReplayEvent: (eventId: number | null) => void;
   handleIncomingEvent: (evt: EventPayload) => void;
 }
 
@@ -71,6 +75,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   isPaused: false,
   isLoading: false,
   lastEventId: 0,
+  selectedRoom: null,
+  replayEventId: null,
 
   fetchProjects: async () => {
     try {
@@ -141,6 +147,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   setSelectedArtifact: (art) => set({ selectedArtifact: art, activeDrawerTab: art ? 'artifacts' : get().activeDrawerTab }),
   setActiveDrawerTab: (tab) => set({ activeDrawerTab: tab }),
   togglePause: () => set((state) => ({ isPaused: !state.isPaused })),
+  setSelectedRoom: (room) => set({ selectedRoom: room }),
+  setReplayEvent: (eventId) => set({ replayEventId: eventId }),
 
   handleIncomingEvent: (evt: EventPayload) => {
     set((state) => {
