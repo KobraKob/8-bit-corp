@@ -92,7 +92,6 @@ export const Shell: React.FC = () => {
         width: officeContainerRef.current.clientWidth || 800,
         height: officeContainerRef.current.clientHeight || 600,
         pixelArt: true,
-        backgroundColor: '#111a22',
         scene: [OfficeScene],
         scale: { mode: Phaser.Scale.RESIZE, autoCenter: Phaser.Scale.CENTER_BOTH },
         render: { pixelArt: true, antialias: false, roundPixels: true },
