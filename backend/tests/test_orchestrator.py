@@ -9,7 +9,7 @@ from app.domain.org_model import seed_organization_from_config
 from app.domain.task_fsm import TaskStatus
 from app.llm.provider import MockProvider
 from app.llm.router import llm_router
-from app.orchestrator.scheduler import scheduler
+from app.orchestrator.scheduler import dependencies_are_complete, scheduler
 
 
 @pytest.mark.asyncio
@@ -105,3 +105,22 @@ async def test_golden_path_orchestration():
         tasks = (await session.execute(stmt)).scalars().all()
         assert len(tasks) >= 3  # Root CEO + 2 subtasks
         assert all(t.status == TaskStatus.DONE.value for t in tasks)
+
+
+
+def test_dependency_readiness_uses_only_stable_task_ids():
+    assert dependencies_are_complete([], {})
+    assert dependencies_are_complete(["task-a", "task-b"], {
+        "task-a": TaskStatus.DONE.value,
+        "task-b": TaskStatus.DONE.value,
+    })
+    assert not dependencies_are_complete(["task-a", "missing"], {
+        "task-a": TaskStatus.DONE.value,
+    })
+    assert not dependencies_are_complete(["task-a"], {
+        "task-a": TaskStatus.IN_PROGRESS.value,
+    })
+    # Repeated references do not make a completed dependency appear unresolved.
+    assert dependencies_are_complete(["task-a", "task-a"], {
+        "task-a": TaskStatus.DONE.value,
+    })
