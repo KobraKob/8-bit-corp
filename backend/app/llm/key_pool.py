@@ -1,7 +1,10 @@
 import os
 import time
 from typing import Dict, List, Optional, Tuple
+from dotenv import load_dotenv
 from pydantic import BaseModel, Field
+
+load_dotenv()
 
 
 class KeyStatus(BaseModel):
@@ -55,12 +58,15 @@ class KeyPoolManager:
         self._load_from_env()
 
     def _load_from_env(self) -> None:
-        # 1. Single default key
-        default_key = os.getenv("GROQ_API_KEY", "").strip()
-        if default_key and default_key not in ("your_groq_api_key_here", "no-key-set"):
-            self.add_key(default_key, alias="default_key", is_manager_dedicated=False)
+        # 1. Dedicated manager keys (for CEO, CTO, Executives, Level <= 3)
+        mgr_keys_str = os.getenv("GROQ_MANAGER_KEYS", "").strip()
+        if mgr_keys_str:
+            for i, raw_k in enumerate(mgr_keys_str.split(",")):
+                k = raw_k.strip()
+                if k and k not in [entry.key for entry in self._keys.values()]:
+                    self.add_key(k, alias=f"manager_key_{i+1}", is_manager_dedicated=True)
 
-        # 2. General multi-key pool (comma-separated list of 5-10 keys)
+        # 2. General multi-key pool (comma-separated list of keys)
         keys_pool_str = os.getenv("GROQ_API_KEYS", "").strip()
         if keys_pool_str:
             for i, raw_k in enumerate(keys_pool_str.split(",")):
@@ -68,13 +74,11 @@ class KeyPoolManager:
                 if k and k not in [entry.key for entry in self._keys.values()]:
                     self.add_key(k, alias=f"pool_key_{i+1}", is_manager_dedicated=False)
 
-        # 3. Dedicated manager keys (e.g. for CEO, CTO, Executives, Level <= 3)
-        mgr_keys_str = os.getenv("GROQ_MANAGER_KEYS", "").strip()
-        if mgr_keys_str:
-            for i, raw_k in enumerate(mgr_keys_str.split(",")):
-                k = raw_k.strip()
-                if k and k not in [entry.key for entry in self._keys.values()]:
-                    self.add_key(k, alias=f"manager_key_{i+1}", is_manager_dedicated=True)
+        # 3. Default fallback key
+        default_key = os.getenv("GROQ_API_KEY", "").strip()
+        if default_key and default_key not in ("your_groq_api_key_here", "no-key-set"):
+            if default_key not in [entry.key for entry in self._keys.values()]:
+                self.add_key(default_key, alias="default_key", is_manager_dedicated=False)
 
     def add_key(self, key: str, alias: Optional[str] = None, is_manager_dedicated: bool = False) -> str:
         k = key.strip()
