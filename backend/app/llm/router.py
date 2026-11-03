@@ -100,10 +100,15 @@ class LLMRouter:
 
         for model_name in models_to_try:
             # Select key for this agent from the pool
-            api_key, key_alias = key_pool.select_key_for_agent(
-                agent_level=agent_level,
-                dedicated_key=agent_dedicated_key,
-            )
+            if provider_name == "groq":
+                api_key, key_alias = key_pool.select_key_for_agent(
+                    agent_level=agent_level,
+                    dedicated_key=agent_dedicated_key,
+                )
+            else:
+                provider_cfg = self.settings.models.providers[provider_name]
+                api_key = agent_dedicated_key or os.getenv(provider_cfg.api_key_env, "") or "no-key-set"
+                key_alias = f"{provider_name}_agent" if agent_dedicated_key else f"{provider_name}_default"
 
             # Check rate limiting for this specific key
             if self.override_provider or provider_name == "mock":
