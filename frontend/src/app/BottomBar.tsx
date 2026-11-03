@@ -1,106 +1,72 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAppStore } from '../state/useAppStore';
-import { DollarSign, Cpu, Play, Pause, Key, Zap } from 'lucide-react';
+import { DollarSign, Cpu, Pause, Play, Key, Zap, WifiOff } from 'lucide-react';
 import { TaskTreeNode } from '../api/types';
 
 function countActiveTasks(nodes: TaskTreeNode[]): number {
   let count = 0;
-  function walk(items: TaskTreeNode[]) {
-    for (const item of items) {
-      if (item.status === 'in_progress' || item.status === 'integrating' || item.status === 'reviewing') {
-        count++;
-      }
-      if (item.children) walk(item.children);
-    }
-  }
+  const walk = (items: TaskTreeNode[]) => items.forEach((item) => {
+    if (['in_progress', 'integrating', 'reviewing', 'in_review'].includes(item.status)) count++;
+    if (item.children) walk(item.children);
+  });
   walk(nodes);
   return count;
 }
 
 export const BottomBar: React.FC = () => {
-  const { usage, keyStatuses, taskTree, fetchKeys, setActiveDrawerTab, isPaused, togglePause } = useAppStore();
+  const {
+    usage, keyStatuses, taskTree, fetchKeys, setActiveDrawerTab,
+    isPaused, togglePause, networkStatus, projects,
+  } = useAppStore();
+  const [isUpdatingPause, setIsUpdatingPause] = useState(false);
 
-  useEffect(() => {
-    fetchKeys();
-  }, []);
+  useEffect(() => { void fetchKeys(); }, []);
 
-  const cost = usage?.total_cost_estimate || 0.0;
+  const cost = usage?.total_cost_estimate || 0;
   const tokens = (usage?.total_prompt_tokens || 0) + (usage?.total_completion_tokens || 0);
   const calls = usage?.total_calls || 0;
-  const healthyKeys = keyStatuses.filter((k) => k.is_healthy).length;
+  const healthyKeys = keyStatuses.filter((key) => key.is_healthy).length;
   const activeCount = countActiveTasks(taskTree);
+  const hasActiveProjects = projects.some((project) => project.status === 'active' || project.status === 'paused');
+
+  const handlePause = async () => {
+    setIsUpdatingPause(true);
+    try {
+      await togglePause();
+    } finally {
+      setIsUpdatingPause(false);
+    }
+  };
 
   return (
-    <div className="h-9 bg-slate-950 border-t border-slate-800 flex items-center justify-between px-3 text-[11px] font-mono text-slate-400 select-none z-20">
-      {/* Payroll & Usage Metrics */}
-      <div className="flex items-center gap-4">
-        <div className="flex items-center gap-1 text-slate-300">
-          <DollarSign size={13} className="text-emerald-400" />
-          <span>Payroll: </span>
-          <span className="font-semibold text-emerald-400">${cost.toFixed(4)}</span>
-        </div>
-
-        <div className="flex items-center gap-1">
-          <Cpu size={13} className="text-sky-400" />
-          <span>LLM Calls: </span>
-          <span className="font-semibold text-slate-200">{calls}</span>
-        </div>
-
-        <div>
-          <span>Total Tokens: </span>
-          <span className="font-semibold text-slate-200">{tokens.toLocaleString()}</span>
-        </div>
-
-        {/* Live Active Execution Indicator */}
-        <button
-          onClick={() => setActiveDrawerTab('tree')}
-          className={`flex items-center gap-1.5 px-2 py-0.5 rounded border transition-colors cursor-pointer ${
-            activeCount > 0
-              ? 'bg-amber-950/60 border-amber-800 text-amber-300'
-              : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-300'
-          }`}
-          title="Click to view execution tree"
-        >
-          <Zap size={12} className={activeCount > 0 ? 'text-amber-400 animate-pulse' : 'text-slate-500'} />
-          <span>Tasks: </span>
-          <span className="font-semibold">
-            {activeCount > 0 ? `${activeCount} Running` : 'Idle'}
-          </span>
+    <footer className="app-statusbar">
+      <div className="app-statusbar-metrics">
+        <span><DollarSign size={13} /><strong>${cost.toFixed(4)}</strong><span>Estimated cost</span></span>
+        <span><Cpu size={13} /><strong>{calls.toLocaleString()}</strong><span>LLM calls</span></span>
+        <span><strong>{tokens.toLocaleString()}</strong><span>Tokens used</span></span>
+        <button type="button" onClick={() => setActiveDrawerTab('tree')} className="app-statusbar-link">
+          <Zap size={13} /><strong>{activeCount}</strong><span>Active tasks</span>
         </button>
-
-        {/* Key Pool Status Badge */}
-        <button
-          onClick={() => setActiveDrawerTab('keys')}
-          className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-slate-900 border border-slate-800 hover:border-amber-700/60 text-slate-300 transition-colors cursor-pointer"
-          title="Open API Key Pool"
-        >
-          <Key size={12} className="text-amber-400" />
-          <span>Keys: </span>
-          <span className="font-semibold text-amber-300">
-            {healthyKeys}/{keyStatuses.length || 1} Active
-          </span>
+        <button type="button" onClick={() => setActiveDrawerTab('keys')} className="app-statusbar-link">
+          <Key size={13} /><strong>{healthyKeys}/{keyStatuses.length}</strong><span>Healthy keys</span>
         </button>
       </div>
-
-      {/* Quota & Pause Controls */}
-      <div className="flex items-center gap-3">
-        <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-[10px]">
-          <span className={`w-1.5 h-1.5 rounded-full ${activeCount > 0 ? 'bg-amber-400 animate-ping' : 'bg-emerald-400 animate-pulse'}`} />
-          <span>Engine: {activeCount > 0 ? 'Executing' : 'Healthy'}</span>
-        </div>
-
+      <div className="app-statusbar-controls">
+        <span className={'app-engine-state app-engine-' + networkStatus}>
+          {networkStatus === 'offline' ? <WifiOff size={12} /> : <span className="app-engine-marker" />}
+          {networkStatus === 'offline' ? 'Offline' : networkStatus === 'degraded' ? 'Sync unavailable' : activeCount > 0 ? 'Executing' : 'Ready'}
+        </span>
         <button
-          onClick={togglePause}
-          className={`flex items-center gap-1 px-2.5 py-0.5 rounded text-[11px] font-medium border transition-all ${
-            isPaused
-              ? 'bg-amber-950 border-amber-800 text-amber-300 hover:bg-amber-900'
-              : 'bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-800'
-          }`}
+          type="button"
+          className="app-button app-button-quiet"
+          onClick={() => void handlePause()}
+          disabled={!hasActiveProjects || isUpdatingPause || networkStatus === 'offline'}
+          title={isPaused ? 'Resume paused projects' : 'Pause active projects'}
         >
-          {isPaused ? <Play size={11} /> : <Pause size={11} />}
-          <span>{isPaused ? 'Resume All' : 'Pause All'}</span>
+          {isPaused ? <Play size={12} /> : <Pause size={12} />}
+          {isUpdatingPause ? 'Updating' : isPaused ? 'Resume projects' : 'Pause projects'}
         </button>
       </div>
-    </div>
+    </footer>
   );
 };
