@@ -1,179 +1,195 @@
 import React, { useState } from 'react';
 import { useAppStore } from '../state/useAppStore';
 import { TaskTreeNode } from '../api/types';
+import { AgentAvatar } from '../components/AgentAvatar';
 import {
-  CheckCircle2,
-  Clock,
-  AlertTriangle,
-  ArrowRight,
-  CornerDownRight,
-  Play,
-  RefreshCw,
-  Zap,
-  Activity,
-  Layers,
+  Activity, AlertCircle, CheckCircle2, ChevronDown, ChevronRight, Circle,
+  Clock3, Layers, RefreshCw, ShieldAlert, UserRound, XCircle,
 } from 'lucide-react';
 
-const statusColors: Record<string, string> = {
-  pending: 'text-slate-400 bg-slate-800 border-slate-700',
-  assigned: 'text-blue-400 bg-blue-950/60 border-blue-800',
-  in_progress: 'text-amber-300 bg-amber-950/80 border-amber-600 animate-pulse font-bold',
-  integrating: 'text-purple-300 bg-purple-950/80 border-purple-600 animate-pulse font-bold',
-  in_review: 'text-indigo-300 bg-indigo-950/80 border-indigo-600 font-bold',
-  reviewing: 'text-violet-300 bg-violet-950/80 border-violet-600 font-bold animate-pulse',
-  revision_requested: 'text-orange-400 bg-orange-950/60 border-orange-800',
-  done: 'text-emerald-400 bg-emerald-950/60 border-emerald-800',
-  blocked: 'text-rose-400 bg-rose-950/60 border-rose-800',
-  failed: 'text-red-500 bg-red-950/60 border-red-800',
-  cancelled: 'text-neutral-500 bg-neutral-900 border-neutral-800',
-};
+const ACTIVE = new Set(['in_progress', 'integrating', 'reviewing']);
+const REVIEW = new Set(['in_review', 'revision_requested']);
+const DONE = new Set(['done']);
+const BLOCKED = new Set(['blocked', 'failed']);
+
+function flatten(nodes: TaskTreeNode[]): TaskTreeNode[] {
+  const result: TaskTreeNode[] = [];
+  const visit = (items: TaskTreeNode[]) => items.forEach((item) => {
+    result.push(item);
+    if (item.children?.length) visit(item.children);
+  });
+  visit(nodes);
+  return result;
+}
+
+function elapsed(startedAt?: string | null, createdAt?: string): string | null {
+  const value = startedAt || createdAt;
+  if (!value) return null;
+  const minutes = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 60000));
+  if (minutes < 1) return 'Started just now';
+  if (minutes < 60) return 'Running for ' + minutes + 'm';
+  const hours = Math.floor(minutes / 60);
+  return 'Running for ' + hours + 'h ' + (minutes % 60) + 'm';
+}
+
+function statusLabel(status: string): string {
+  const labels: Record<string, string> = {
+    pending: 'Pending',
+    assigned: 'Queued',
+    in_progress: 'Working',
+    integrating: 'Integrating',
+    in_review: 'Ready for review',
+    reviewing: 'Reviewing',
+    revision_requested: 'Changes requested',
+    done: 'Complete',
+    blocked: 'Blocked',
+    failed: 'Failed',
+    cancelled: 'Cancelled',
+  };
+  return labels[status] || status.replaceAll('_', ' ');
+}
+
+function statusIcon(status: string) {
+  if (DONE.has(status)) return <CheckCircle2 size={14} />;
+  if (BLOCKED.has(status)) return <AlertCircle size={14} />;
+  if (REVIEW.has(status)) return <ShieldAlert size={14} />;
+  if (ACTIVE.has(status)) return <Activity size={14} />;
+  if (status === 'cancelled') return <XCircle size={14} />;
+  return <Circle size={12} />;
+}
 
 function TaskNodeItem({ node }: { node: TaskTreeNode }) {
   const { setSelectedTask, selectedTaskId, setSelectedAgent, agents } = useAppStore();
-  const isSelected = selectedTaskId === node.id;
-  const assignee = agents.find((a) => a.id === node.assignee_agent_id);
-
-  const isInProgress = node.status === 'in_progress' || node.status === 'integrating' || node.status === 'reviewing';
-  const isDone = node.status === 'done';
+  const [expanded, setExpanded] = useState(node.depth === 0);
+  const assignee = agents.find((agent) => agent.id === node.assignee_agent_id);
+  const selected = selectedTaskId === node.id;
+  const hasChildren = Boolean(node.children?.length);
+  const runningTime = elapsed(node.started_at, node.created_at);
 
   return (
-    <div className="flex flex-col ml-2.5 border-l-2 border-slate-800 pl-2.5 my-1.5">
-      <div
-        onClick={() => setSelectedTask(node.id)}
-        className={`p-2.5 rounded-lg border text-xs cursor-pointer transition-all ${
-          isSelected
-            ? 'border-sky-500 bg-sky-950/50 shadow-md ring-1 ring-sky-500/50'
-            : isInProgress
-            ? 'border-amber-600/70 bg-amber-950/30 hover:border-amber-500'
-            : 'border-slate-800/80 bg-slate-900/60 hover:border-slate-700'
-        }`}
-      >
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-1.5 min-w-0">
-            {isInProgress ? (
-              <RefreshCw size={12} className="text-amber-400 animate-spin shrink-0" />
-            ) : isDone ? (
-              <CheckCircle2 size={13} className="text-emerald-400 shrink-0" />
-            ) : (
-              <CornerDownRight size={12} className="text-slate-500 shrink-0" />
-            )}
-            <span className={`font-semibold truncate ${isInProgress ? 'text-amber-200' : 'text-slate-200'}`}>
-              {node.title}
-            </span>
-          </div>
-          <span
-            className={`px-2 py-0.5 rounded text-[10px] font-mono uppercase border shrink-0 ${
-              statusColors[node.status] || 'text-slate-400'
-            }`}
-          >
-            {node.status}
-          </span>
-        </div>
-
-        <p className="text-slate-400 text-[11px] mt-1 line-clamp-2 leading-relaxed">
-          {node.description}
-        </p>
-
-        <div className="flex items-center justify-between mt-2 pt-1.5 border-t border-slate-800/60 text-[10px] text-slate-500 font-mono">
-          <span>Depth: {node.depth}</span>
-          {node.assignee_agent_id && (
+    <div className="task-tree-node" style={{ marginLeft: Math.min(node.depth, 5) * 10 }}>
+      <article className={'task-tree-card' + (selected ? ' task-tree-card-selected' : '')}>
+        <div className="task-tree-main">
+          <button type="button" className="task-tree-title" onClick={() => setSelectedTask(node.id)}>
+            <span className={'task-status-icon task-status-' + node.status}>{statusIcon(node.status)}</span>
+            <span className="task-tree-title-text">{node.title}</span>
+          </button>
+          {hasChildren && (
             <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setSelectedAgent(node.assignee_agent_id!);
-              }}
-              className="text-sky-400 hover:underline truncate max-w-[130px]"
-              title={assignee ? `${assignee.display_name} (${assignee.department})` : node.assignee_agent_id}
+              type="button"
+              className="task-tree-expand"
+              onClick={() => setExpanded((value) => !value)}
+              aria-label={expanded ? 'Collapse subtasks' : 'Expand subtasks'}
+              aria-expanded={expanded}
             >
-              👤 {assignee ? assignee.display_name : node.assignee_agent_id.slice(0, 10)}
+              {expanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
             </button>
           )}
-          <span>Tokens: {node.tokens_used.toLocaleString()}</span>
         </div>
-      </div>
-
-      {node.children && node.children.length > 0 && (
-        <div className="flex flex-col">
-          {node.children.map((child) => (
-            <TaskNodeItem key={child.id} node={child} />
-          ))}
+        <div className="task-tree-description">{node.description}</div>
+        <div className="task-tree-meta">
+          <span className={'task-status-label task-status-' + node.status}>{statusLabel(node.status)}</span>
+          {assignee ? (
+            <button type="button" className="task-assignee" onClick={() => setSelectedAgent(assignee.id)}>
+              <AgentAvatar agent={assignee} size={22} />
+              <span>{assignee.display_name}</span>
+            </button>
+          ) : node.assignee_agent_id ? (
+            <span className="task-assignee"><UserRound size={12} /> {node.assignee_agent_id.slice(0, 9)}</span>
+          ) : null}
+          <span className="task-tree-measured">Level {node.depth}</span>
+          <span className="task-tree-measured">{node.tokens_used.toLocaleString()} tokens</span>
+        </div>
+        {ACTIVE.has(node.status) && runningTime && (
+          <div className="task-tree-runtime"><Clock3 size={11} /> {runningTime}</div>
+        )}
+        {node.error && <div className="task-tree-error">{node.error}</div>}
+      </article>
+      {hasChildren && expanded && (
+        <div className="task-tree-children">
+          {node.children.map((child) => <TaskNodeItem key={child.id} node={child} />)}
         </div>
       )}
     </div>
   );
 }
 
-function countTreeNodes(nodes: TaskTreeNode[]): { total: number; done: number; inProgress: number } {
-  let total = 0;
-  let done = 0;
-  let inProgress = 0;
-  function walk(items: TaskTreeNode[]) {
-    for (const item of items) {
-      total++;
-      if (item.status === 'done') done++;
-      if (item.status === 'in_progress' || item.status === 'integrating' || item.status === 'reviewing') inProgress++;
-      if (item.children) walk(item.children);
-    }
-  }
-  walk(nodes);
-  return { total, done, inProgress };
-}
-
 export const TaskTreePanel: React.FC = () => {
-  const { taskTree, fetchTaskTree, activeProjectId } = useAppStore();
-  const [isRefreshing, setIsRefreshing] = useState(false);
-
-  const { total, done, inProgress } = countTreeNodes(taskTree);
-
-  const handleRefresh = async () => {
-    setIsRefreshing(true);
-    await fetchTaskTree();
-    setTimeout(() => setIsRefreshing(false), 500);
-  };
-
-  if (taskTree.length === 0) {
-    return (
-      <div className="p-6 text-center text-slate-500 text-xs font-mono flex flex-col items-center gap-3">
-        <Layers size={24} className="text-slate-700" />
-        <p>No active tasks in this project yet.</p>
-        <button
-          onClick={handleRefresh}
-          className="px-3 py-1 rounded bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-300 text-[11px]"
-        >
-          Check for Tasks
-        </button>
-      </div>
-    );
-  }
+  const {
+    taskTree, fetchTaskTree, activeProjectId, taskTreeLoading,
+    taskTreeError, taskTreeUpdatedAt, projects, networkStatus,
+  } = useAppStore();
+  const nodes = flatten(taskTree);
+  const done = nodes.filter((task) => task.status === 'done').length;
+  const active = nodes.filter((task) => ACTIVE.has(task.status)).length;
+  const review = nodes.filter((task) => REVIEW.has(task.status)).length;
+  const blocked = nodes.filter((task) => BLOCKED.has(task.status)).length;
+  const percent = nodes.length ? Math.round((done / nodes.length) * 100) : 0;
+  const project = projects.find((item) => item.id === activeProjectId);
 
   return (
-    <div className="p-3 flex flex-col space-y-2 overflow-y-auto max-h-[calc(100vh-140px)]">
-      {/* Header with Stats & Live Refresh */}
-      <div className="flex items-center justify-between pb-2 border-b border-slate-800">
-        <div>
-          <div className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
-            <Activity size={13} className="text-sky-400" />
-            Hierarchy Execution Tree
+    <section className="task-panel app-panel app-scroll">
+      <header className="task-panel-header">
+        <div className="task-panel-heading">
+          <div>
+            <h2>Work hierarchy</h2>
+            <p>{project?.name || 'Select a project to inspect its work.'}</p>
           </div>
-          <div className="text-[10px] text-slate-400 font-mono mt-0.5">
-            {done}/{total} Done • {inProgress} In Progress
-          </div>
+          <button type="button" className="app-icon-button" onClick={() => void fetchTaskTree()} disabled={!activeProjectId || taskTreeLoading} aria-label="Refresh task hierarchy">
+            <RefreshCw size={15} />
+          </button>
         </div>
+        {nodes.length > 0 && (
+          <>
+            <div className="task-progress-line">
+              <span className="task-progress-value">{percent}%</span>
+              <span className="task-progress-caption">{done} of {nodes.length} work packages complete</span>
+            </div>
+            <div className="app-progress" role="progressbar" aria-label="Project task completion" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}>
+              <span style={{ transform: 'scaleX(' + (percent / 100) + ')' }} />
+            </div>
+            <div className="task-summary">
+              <span><Activity size={12} /> {active} working</span>
+              <span><ShieldAlert size={12} /> {review} in review</span>
+              <span><AlertCircle size={12} /> {blocked} need attention</span>
+            </div>
+          </>
+        )}
+      </header>
 
-        <button
-          onClick={handleRefresh}
-          disabled={isRefreshing}
-          className="p-1.5 rounded border border-slate-800 bg-slate-900 text-slate-400 hover:text-slate-200 transition-colors"
-          title="Refresh Execution Tree"
-        >
-          <RefreshCw size={12} className={isRefreshing ? 'animate-spin text-sky-400' : ''} />
-        </button>
-      </div>
+      {taskTreeError && (
+        <div className={nodes.length ? 'task-stale-notice' : 'app-error'} role="alert">
+          <strong>{networkStatus === 'offline' ? 'You are offline.' : 'Could not refresh the work hierarchy.'}</strong>
+          <span>{nodes.length ? ' Showing the last successful snapshot.' : ' ' + taskTreeError}</span>
+          {nodes.length > 0 && taskTreeUpdatedAt && <span> Last synced {new Date(taskTreeUpdatedAt).toLocaleTimeString()}.</span>}
+          <button type="button" onClick={() => void fetchTaskTree()} disabled={networkStatus === 'offline'}>Retry</button>
+        </div>
+      )}
 
-      {/* Task Nodes */}
-      {taskTree.map((root) => (
-        <TaskNodeItem key={root.id} node={root} />
-      ))}
-    </div>
+      {!activeProjectId ? (
+        <div className="app-empty"><Layers size={22} /><p>Select a project to see its task hierarchy.</p></div>
+      ) : taskTreeLoading && nodes.length === 0 ? (
+        <div className="task-tree-skeleton" aria-label="Loading work hierarchy">
+          {[0, 1, 2].map((item) => (
+            <div className="task-tree-skeleton-item" key={item}>
+              <div className="app-skeleton app-skeleton-line" />
+              <div className="app-skeleton app-skeleton-wide" />
+              <div className="app-skeleton app-skeleton-short" />
+            </div>
+          ))}
+        </div>
+      ) : nodes.length === 0 ? (
+        <div className="app-empty">
+          <Layers size={24} />
+          <strong>No work packages yet</strong>
+          <p>Send a brief to the CEO from the project sidebar. The resulting work breakdown will appear here.</p>
+          {taskTreeError && <button type="button" className="app-button" onClick={() => void fetchTaskTree()} disabled={networkStatus === 'offline'}>Try again</button>}
+        </div>
+      ) : (
+        <div className="task-tree-list">
+          {taskTree.map((root) => <TaskNodeItem key={root.id} node={root} />)}
+        </div>
+      )}
+    </section>
   );
 };
