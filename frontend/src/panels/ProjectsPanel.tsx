@@ -18,7 +18,7 @@ const statusStyles: Record<string, string> = {
 export const ProjectsPanel: React.FC = () => {
   const {
     projects, activeProjectId, fetchProjects, setActiveProject, clearActiveProject,
-    setActiveDrawerTab, networkStatus, projectsError,
+    setActiveDrawerTab, networkStatus, projectsError, projectsLoading,
   } = useAppStore();
   const [filter, setFilter] = useState<Filter>('all');
   const [query, setQuery] = useState('');
@@ -94,7 +94,11 @@ export const ProjectsPanel: React.FC = () => {
       {error && <div className="app-error mx-3 mt-3" role="alert">{error}</div>}
 
       <div className="projects-list app-scroll">
-        {visible.length === 0 ? (
+        {projectsLoading && projects.length === 0 ? (
+          <div className="task-tree-skeleton" aria-label="Loading projects">
+            {[0, 1, 2].map((item) => <div className="task-tree-skeleton-item" key={item}><div className="app-skeleton app-skeleton-line" /><div className="app-skeleton app-skeleton-wide" /><div className="app-skeleton app-skeleton-short" /></div>)}
+          </div>
+        ) : visible.length === 0 ? (
           <div className="app-empty">
             <Archive size={22} />
             <strong>{query ? 'No matching projects' : filter === 'completed' ? 'No completed projects yet' : 'No projects in this view'}</strong>
