@@ -31,7 +31,7 @@ export const LeftSidebar: React.FC<{ onOpenIntake: () => void }> = ({ onOpenInta
   };
 
   return (
-    <div className="w-72 bg-slate-950 border-r border-slate-800 flex flex-col justify-between h-screen text-xs select-none">
+    <div className="h-full w-72 bg-slate-950 border-r border-slate-800 flex flex-col justify-between text-xs select-none">
       {/* Brand Header */}
       <div className="p-3 border-b border-slate-800 flex items-center justify-between">
         <div className="flex items-center gap-2">
