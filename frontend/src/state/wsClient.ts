@@ -1,57 +1,87 @@
 import { useAppStore } from './useAppStore';
 
-const apiBase = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api').replace(/\/+$/, '');
-const defaultSocketUrl = apiBase.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:').replace(/\/api$/, '') + '/ws';
+function trimTrailingSlashes(value: string): string {
+  let end = value.length;
+  while (end > 0 && value[end - 1] === '/') end -= 1;
+  return value.slice(0, end);
+}
+
+const apiBase = trimTrailingSlashes(import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api');
+const apiRoot = apiBase.endsWith('/api') ? apiBase.slice(0, -4) : apiBase;
+const defaultSocketUrl = apiRoot.startsWith('https://')
+  ? 'wss://' + apiRoot.slice('https://'.length) + '/ws'
+  : 'ws://' + apiRoot.slice('http://'.length) + '/ws';
 
 class WebSocketClient {
   private ws: WebSocket | null = null;
   private url = import.meta.env.VITE_WS_URL || defaultSocketUrl;
   private reconnectInterval = 1000;
-  private maxReconnectInterval = 10000;
+  private readonly maxReconnectInterval = 10000;
   private isConnecting = false;
   private shouldReconnect = true;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
   connect() {
     this.shouldReconnect = true;
-    if (this.isConnecting || (this.ws && this.ws.readyState === WebSocket.OPEN)) return;
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      useAppStore.getState().setNetworkStatus('offline');
+      return;
+    }
+    if (this.isConnecting || (this.ws && this.ws.readyState <= WebSocket.OPEN)) return;
+
+    this.clearReconnectTimer();
+    this.isConnecting = true;
+    try {
+      const socket = new WebSocket(this.url);
+      this.ws = socket;
+      socket.onopen = () => {
+        this.isConnecting = false;
+        this.reconnectInterval = 1000;
+        useAppStore.getState().setNetworkStatus('connected');
+        const { lastEventId, activeProjectId } = useAppStore.getState();
+        socket.send(JSON.stringify({
+          type: 'resume',
+          last_event_id: lastEventId,
+          project_id: activeProjectId,
+        }));
+      };
+      socket.onmessage = (event) => {
+        try {
+          useAppStore.getState().handleIncomingEvent(JSON.parse(event.data));
+        } catch (error) {
+          console.error('[Pixel Corp] Could not process live event:', error);
+        }
+      };
+      socket.onclose = () => {
+        if (this.ws === socket) this.ws = null;
+        this.isConnecting = false;
+        if (!this.shouldReconnect) return;
+        useAppStore.getState().setNetworkStatus(
+          typeof navigator !== 'undefined' && !navigator.onLine ? 'offline' : 'degraded'
+        );
+        this.scheduleReconnect();
+      };
+      socket.onerror = () => socket.close();
+    } catch (error) {
+      this.isConnecting = false;
+      if (this.shouldReconnect) {
+        useAppStore.getState().setNetworkStatus('degraded');
+        this.scheduleReconnect();
+      }
+    }
+  }
+
+  private clearReconnectTimer() {
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
-    this.isConnecting = true;
-    try {
-      this.ws = new WebSocket(this.url);
-      this.ws.onopen = () => {
-        this.isConnecting = false;
-        this.reconnectInterval = 1000;
-        const { lastEventId, activeProjectId } = useAppStore.getState();
-        this.ws?.send(JSON.stringify({ type: 'resume', last_event_id: lastEventId, project_id: activeProjectId }));
-      };
-      this.ws.onmessage = (event) => {
-        try {
-          useAppStore.getState().handleIncomingEvent(JSON.parse(event.data));
-        } catch (error) {
-          console.error('[PixelCorp WS] Failed to process event:', error);
-        }
-      };
-      this.ws.onclose = () => {
-        this.isConnecting = false;
-        this.ws = null;
-        this.scheduleReconnect();
-      };
-      this.ws.onerror = () => this.ws?.close();
-    } catch (error) {
-      console.error('[PixelCorp WS] Connection attempt failed:', error);
-      this.isConnecting = false;
-      this.scheduleReconnect();
-    }
   }
 
   private scheduleReconnect() {
-    if (!this.shouldReconnect || this.reconnectTimer) return;
+    if (!this.shouldReconnect || this.reconnectTimer || (typeof navigator !== 'undefined' && !navigator.onLine)) return;
     const delay = this.reconnectInterval;
-    this.reconnectInterval = Math.min(this.reconnectInterval * 1.5, this.maxReconnectInterval);
+    this.reconnectInterval = Math.min(Math.round(this.reconnectInterval * 1.7), this.maxReconnectInterval);
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       this.connect();
@@ -60,13 +90,11 @@ class WebSocketClient {
 
   disconnect() {
     this.shouldReconnect = false;
-    if (this.reconnectTimer) {
-      clearTimeout(this.reconnectTimer);
-      this.reconnectTimer = null;
-    }
-    this.ws?.close();
+    this.clearReconnectTimer();
+    const socket = this.ws;
     this.ws = null;
     this.isConnecting = false;
+    socket?.close();
   }
 }
 

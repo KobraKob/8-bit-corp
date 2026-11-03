@@ -121,11 +121,11 @@ TOOL_DEFINITIONS: Dict[str, Dict[str, Any]] = {
         "type": "function",
         "function": {
             "name": "write_file",
-            "description": "Write text content to a file inside the project workspace directory.",
+            "description": "Write text content to your private agent directory inside the current project. Prefix shared/ for files intentionally shared with teammates.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "path": {"type": "string", "description": "Relative file path inside the project workspace"},
+                    "path": {"type": "string", "description": "Relative path inside your private agent folder; prefix shared/ for a deliberate handoff"},
                     "content": {"type": "string", "description": "File contents to write"},
                 },
                 "required": ["path", "content"],
@@ -136,11 +136,11 @@ TOOL_DEFINITIONS: Dict[str, Dict[str, Any]] = {
         "type": "function",
         "function": {
             "name": "read_file",
-            "description": "Read text content from a file inside the project workspace.",
+            "description": "Read a file from your private agent directory. Prefix shared/ or artifacts/ to read project-shared files.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "path": {"type": "string", "description": "Relative file path inside the workspace"},
+                    "path": {"type": "string", "description": "Relative path inside your private folder; use shared/ or artifacts/ to read shared project files"},
                 },
                 "required": ["path"],
             },
@@ -150,11 +150,11 @@ TOOL_DEFINITIONS: Dict[str, Dict[str, Any]] = {
         "type": "function",
         "function": {
             "name": "list_files",
-            "description": "List existing files in the project workspace directory.",
+            "description": "List files in your private project folder. Use shared/ or artifacts/ to inspect shared project files.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "subpath": {"type": "string", "description": "Subdirectory to list (default empty for root)", "default": ""},
+                    "subpath": {"type": "string", "description": "Relative subdirectory in your private folder; shared/ or artifacts/ selects the shared project area", "default": ""},
                 },
             },
         },
@@ -183,7 +183,7 @@ TOOL_DEFINITIONS: Dict[str, Dict[str, Any]] = {
         "type": "function",
         "function": {
             "name": "run_code",
-            "description": "Execute code in a restricted local subprocess (python or node); not a security boundary for untrusted production workloads.",
+            "description": "Execute code in a restricted local subprocess (python or node) with your private project folder as the working directory; not a security boundary for untrusted production workloads.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -262,21 +262,32 @@ class ToolExecutor:
         self.project_id = project_id
         self.task_id = task_id
         self.agent_id = agent_id
+        if agent_id:
+            workspace_manager.get_agent_dir(project_id, agent_id)
 
     async def execute(self, tool_name: str, args: Dict[str, Any]) -> Dict[str, Any]:
         """Safely execute tool. Never raises an uncaught exception to the caller."""
         try:
             if tool_name == "write_file":
-                rel = workspace_manager.write_file(self.project_id, args["path"], args["content"])
+                rel = (
+                    workspace_manager.write_agent_file(self.project_id, self.agent_id, args["path"], args["content"])
+                    if self.agent_id else workspace_manager.write_file(self.project_id, args["path"], args["content"])
+                )
                 return {"success": True, "path": rel, "message": "File written successfully."}
 
             elif tool_name == "read_file":
-                content = workspace_manager.read_file(self.project_id, args["path"])
+                content = (
+                    workspace_manager.read_agent_file(self.project_id, self.agent_id, args["path"])
+                    if self.agent_id else workspace_manager.read_file(self.project_id, args["path"])
+                )
                 return {"success": True, "content": content}
 
             elif tool_name == "list_files":
                 subpath = args.get("subpath", "")
-                files = workspace_manager.list_files(self.project_id, subpath)
+                files = (
+                    workspace_manager.list_agent_files(self.project_id, self.agent_id, subpath)
+                    if self.agent_id else workspace_manager.list_files(self.project_id, subpath)
+                )
                 return {"success": True, "files": files}
 
             elif tool_name == "create_artifact":
@@ -296,7 +307,10 @@ class ToolExecutor:
                 }
 
             elif tool_name == "run_code":
-                proj_dir = workspace_manager.get_project_dir(self.project_id)
+                proj_dir = (
+                    workspace_manager.get_agent_dir(self.project_id, self.agent_id)
+                    if self.agent_id else workspace_manager.get_project_dir(self.project_id)
+                )
                 ret_code, stdout, stderr = sandbox.execute(
                     language=args["language"],
                     code=args["code"],

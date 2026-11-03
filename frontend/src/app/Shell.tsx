@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import Phaser from 'phaser';
+import { Wifi, WifiOff, PanelRight, Plus, Radio } from 'lucide-react';
 import { OfficeScene } from '../office/OfficeScene';
 import { LeftSidebar } from './LeftSidebar';
 import { RightDrawer } from './RightDrawer';
@@ -12,68 +13,95 @@ import { wsClient } from '../state/wsClient';
 export const Shell: React.FC = () => {
   const officeContainerRef = useRef<HTMLDivElement>(null);
   const gameRef = useRef<Phaser.Game | null>(null);
-
   const [isIntakeOpen, setIsIntakeOpen] = useState(false);
-  const { fetchProjects, fetchApprovals, fetchUsage } = useAppStore();
+  const {
+    fetchProjects, fetchApprovals, fetchUsage, fetchAgents, fetchKeys, fetchEvents,
+    isDrawerOpen, setDrawerOpen, networkStatus, projects, activeProjectId,
+    setNetworkStatus,
+  } = useAppStore();
+
+  const activeProject = projects.find((project) => project.id === activeProjectId);
 
   useEffect(() => {
-    // Initial fetch of application state
-    fetchProjects();
-    fetchApprovals();
-    fetchUsage();
+    const refreshAll = () => {
+      if (!navigator.onLine) setNetworkStatus('offline');
+      // Invoke resource loaders even offline. The API client rejects immediately,
+      // which records an explicit unavailable state instead of leaving empty
+      // panels looking like successful, never-started requests.
+      void fetchProjects();
+      void fetchApprovals();
+      void fetchUsage();
+      void fetchAgents();
+      void fetchKeys();
+      void fetchEvents();
+      void useAppStore.getState().fetchTaskTree();
+    };
 
-    // Connect WebSocket
-    wsClient.connect();
+    refreshAll();
+    if (navigator.onLine) wsClient.connect();
 
-    // Background sync loop every 2.5 seconds to guarantee the frontend stays live
-    const interval = setInterval(() => {
-      const activeId = useAppStore.getState().activeProjectId;
-      if (activeId) {
-        useAppStore.getState().fetchTaskTree();
+    const onOffline = () => {
+      setNetworkStatus('offline');
+      wsClient.disconnect();
+    };
+    const onOnline = () => {
+      setNetworkStatus('online');
+      wsClient.connect();
+      refreshAll();
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') refreshAll();
+    };
+
+    window.addEventListener('offline', onOffline);
+    window.addEventListener('online', onOnline);
+    document.addEventListener('visibilitychange', onVisibility);
+
+    // The office is a live workspace, but background polling stays bounded.
+    const taskSync = window.setInterval(() => {
+      if (navigator.onLine && document.visibilityState === 'visible') {
+        void useAppStore.getState().fetchTaskTree();
       }
-      useAppStore.getState().fetchProjects();
-      useAppStore.getState().fetchUsage();
-      useAppStore.getState().fetchApprovals();
-    }, 2500);
+    }, 10000);
+    const metadataSync = window.setInterval(() => {
+      if (navigator.onLine && document.visibilityState === 'visible') {
+        void useAppStore.getState().fetchProjects();
+        void useAppStore.getState().fetchApprovals();
+        void useAppStore.getState().fetchUsage();
+        void useAppStore.getState().fetchEvents();
+      }
+    }, 30000);
 
     return () => {
-      clearInterval(interval);
+      window.clearInterval(taskSync);
+      window.clearInterval(metadataSync);
+      window.removeEventListener('offline', onOffline);
+      window.removeEventListener('online', onOnline);
+      document.removeEventListener('visibilitychange', onVisibility);
       wsClient.disconnect();
     };
   }, []);
 
   useEffect(() => {
     let cancelled = false;
-
-    // Load all employees before generating department desks in the Phaser scene.
     const initializeOffice = async () => {
-      await useAppStore.getState().fetchAgents();
+      await fetchAgents();
       if (cancelled || !officeContainerRef.current || gameRef.current) return;
 
       const config: Phaser.Types.Core.GameConfig = {
-      type: Phaser.AUTO,
-      parent: officeContainerRef.current,
-      width: officeContainerRef.current.clientWidth || 800,
-      height: officeContainerRef.current.clientHeight || 600,
-      pixelArt: true,
-      backgroundColor: '#090d16',
-      scene: [OfficeScene],
-      scale: {
-        mode: Phaser.Scale.RESIZE,
-        autoCenter: Phaser.Scale.CENTER_BOTH,
-      },
-      render: {
+        type: Phaser.AUTO,
+        parent: officeContainerRef.current,
+        width: officeContainerRef.current.clientWidth || 800,
+        height: officeContainerRef.current.clientHeight || 600,
         pixelArt: true,
-        antialias: false,
-        roundPixels: true,
-      },
-    };
-
+        scene: [OfficeScene],
+        scale: { mode: Phaser.Scale.RESIZE, autoCenter: Phaser.Scale.CENTER_BOTH },
+        render: { pixelArt: true, antialias: false, roundPixels: true },
+      };
       gameRef.current = new Phaser.Game(config);
     };
 
     void initializeOffice();
-
     return () => {
       cancelled = true;
       gameRef.current?.destroy(true);
@@ -81,35 +109,64 @@ export const Shell: React.FC = () => {
     };
   }, []);
 
+  const connectionLabel = networkStatus === 'connected'
+    ? 'Live'
+    : networkStatus === 'offline'
+      ? 'Offline'
+      : networkStatus === 'degraded'
+        ? 'Reconnecting'
+        : 'Online';
+
   return (
-    <div className="flex flex-col h-screen w-screen overflow-hidden bg-slate-950 font-sans text-slate-100">
-      {/* Main 3-column Layout */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* Left Sidebar */}
-        <LeftSidebar onOpenIntake={() => setIsIntakeOpen(true)} />
-
-        {/* Center: Pixel Office Canvas with Live HUD */}
-        <div className="flex-1 relative overflow-hidden bg-[#090d16]">
-          {/* Top Live Progress & Status HUD */}
-          <LiveActivityHUD />
-
-          {/* Phaser Canvas */}
-          <div ref={officeContainerRef} className="w-full h-full" />
-
-          {/* Subtle controls overlay tooltip */}
-          <div className="absolute bottom-2 left-2 bg-slate-950/80 backdrop-blur-sm border border-slate-800/80 px-2.5 py-1 rounded text-[10px] font-mono text-slate-400 pointer-events-none select-none z-10">
-            Click agent to inspect • Right-drag to pan • Scroll to zoom
+    <div className="app-shell">
+      <header className="app-topbar">
+        <div className="app-brand">
+          <span className="app-brand-mark" aria-hidden="true">P</span>
+          <div>
+            <div className="app-brand-name">Pixel Corp</div>
+            <div className="app-brand-caption">Virtual office</div>
           </div>
         </div>
 
-        {/* Right Drawer */}
-        <RightDrawer />
+        <div className="app-topbar-context">
+          <span className="app-context-label">Current workspace</span>
+          <span className="app-context-name">{activeProject?.name || 'No project selected'}</span>
+        </div>
+
+        <div className="app-topbar-actions">
+          <span className={'app-connection app-connection-' + networkStatus} role="status" aria-live="polite">
+            {networkStatus === 'offline' ? <WifiOff size={14} /> : networkStatus === 'connected' ? <Radio size={14} /> : <Wifi size={14} />}
+            {connectionLabel}
+          </span>
+          <button type="button" className="app-button app-button-primary" onClick={() => setIsIntakeOpen(true)}>
+            <Plus size={15} /> New project
+          </button>
+          <button
+            type="button"
+            className="app-icon-button"
+            onClick={() => setDrawerOpen(!isDrawerOpen)}
+            aria-label={isDrawerOpen ? 'Close workspace panel' : 'Open workspace panel'}
+            aria-expanded={isDrawerOpen}
+            title={isDrawerOpen ? 'Close workspace panel' : 'Open workspace panel'}
+          >
+            <PanelRight size={17} />
+          </button>
+        </div>
+      </header>
+
+      <div className="app-body">
+        <LeftSidebar onOpenIntake={() => setIsIntakeOpen(true)} />
+        <main className="app-office">
+          <LiveActivityHUD />
+          <div ref={officeContainerRef} className="app-office-canvas" />
+          <div className="app-office-hint">
+            Select an agent to inspect their work. Right-drag to pan. Scroll to zoom.
+          </div>
+        </main>
+        {isDrawerOpen && <RightDrawer />}
       </div>
 
-      {/* Bottom Status / Payroll Bar */}
       <BottomBar />
-
-      {/* Project Brief Intake Modal */}
       <ProjectIntakeModal isOpen={isIntakeOpen} onClose={() => setIsIntakeOpen(false)} />
     </div>
   );

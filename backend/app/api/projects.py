@@ -42,9 +42,10 @@ async def create_project(req: ProjectCreateRequest):
         session.add(proj)
         await session.commit()
         await session.refresh(proj)
+        active_agent_ids = (await session.scalars(select(Agent.id).where(Agent.status == "active"))).all()
 
-    # Initialize project workspace folder
-    workspace_manager.get_project_dir(proj_id)
+    # Provision a private workspace for every currently active agent.
+    workspace_manager.provision_agent_directories(proj_id, active_agent_ids)
 
     return proj
 

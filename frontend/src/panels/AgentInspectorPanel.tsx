@@ -1,32 +1,42 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAppStore } from '../state/useAppStore';
 import { apiClient } from '../api/client';
-import { Shield, Sparkles, Terminal, UserX, Save, Check, Key, ShieldCheck, Trash2 } from 'lucide-react';
+import { AgentAvatar } from '../components/AgentAvatar';
+import { Save, Check, KeyRound, ShieldCheck, Trash2, UserX, RefreshCw } from 'lucide-react';
 
 export const AgentInspectorPanel: React.FC = () => {
-  const { selectedAgentId, agents, fetchAgents } = useAppStore();
-  const agent = agents.find((a) => a.id === selectedAgentId);
-
-  const [prompt, setPrompt] = useState(agent?.system_prompt || '');
-  const [modelTier, setModelTier] = useState(agent?.model_tier || 'fast');
+  const {
+    selectedAgentId, agents, agentsLoading, agentsError, fetchAgents,
+    setSelectedAgent, networkStatus,
+  } = useAppStore();
+  const agent = agents.find((item) => item.id === selectedAgentId);
+  const [prompt, setPrompt] = useState('');
+  const [modelTier, setModelTier] = useState('fast');
   const [customKeyInput, setCustomKeyInput] = useState('');
   const [isSaved, setIsSaved] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
-  // Sync state when selection changes
-  React.useEffect(() => {
-    if (agent) {
-      setPrompt(agent.system_prompt);
-      setModelTier(agent.model_tier);
-      setCustomKeyInput('');
-      setIsSaved(false);
-    }
+  useEffect(() => {
+    if (!agent) return;
+    setPrompt(agent.system_prompt || '');
+    setModelTier(agent.model_tier || 'fast');
+    setCustomKeyInput('');
+    setIsSaved(false);
+    setSaveError(null);
   }, [agent?.id]);
 
   if (!agent) {
     return (
-      <div className="p-8 text-center text-slate-500 text-xs font-mono">
-        Click on any agent sprite in the office or from a task to inspect their role, prompt, and tier.
+      <div className="app-empty">
+        <UserX size={22} />
+        <strong>No agent selected</strong>
+        <p>Select a person in the office, team directory, or task board to inspect their role and instructions.</p>
+        {agentsError && <p role="alert">{agentsError}</p>}
+        {agentsLoading && <span>Loading team roster…</span>}
+        <button type="button" className="app-button" onClick={() => void fetchAgents()} disabled={networkStatus === 'offline'}>
+          <RefreshCw size={13} /> Refresh roster
+        </button>
       </div>
     );
   }
@@ -34,180 +44,128 @@ export const AgentInspectorPanel: React.FC = () => {
   const isHigherManager = agent.level <= 3;
 
   const handleSave = async () => {
+    if (networkStatus === 'offline') return;
     setIsSaving(true);
+    setSaveError(null);
+    setIsSaved(false);
     try {
-      const payload: any = {
-        system_prompt: prompt,
-        model_tier: modelTier,
-      };
-      if (customKeyInput.trim()) {
-        payload.api_key = customKeyInput.trim();
-      }
+      const payload: Partial<typeof agent> = { system_prompt: prompt, model_tier: modelTier };
+      if (customKeyInput.trim()) payload.api_key = customKeyInput.trim();
       await apiClient.updateAgent(agent.id, payload);
       await fetchAgents();
       setCustomKeyInput('');
       setIsSaved(true);
-      setTimeout(() => setIsSaved(false), 2500);
-    } catch (e) {
-      console.error('Failed to update agent', e);
+      window.setTimeout(() => setIsSaved(false), 2500);
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : 'Could not save agent settings.');
     } finally {
       setIsSaving(false);
     }
   };
 
   const handleClearCustomKey = async () => {
+    if (networkStatus === 'offline') return;
     setIsSaving(true);
+    setSaveError(null);
     try {
       await apiClient.updateAgent(agent.id, { api_key: '' });
       await fetchAgents();
       setCustomKeyInput('');
-    } catch (e) {
-      console.error('Failed to clear agent API key', e);
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : 'Could not clear this API key.');
     } finally {
       setIsSaving(false);
     }
   };
 
   const handleRetire = async () => {
-    if (confirm(`Are you sure you want to retire ${agent.display_name}?`)) {
+    if (networkStatus === 'offline' || !window.confirm('Retire ' + agent.display_name + '? They will leave the active office roster.')) return;
+    setIsSaving(true);
+    setSaveError(null);
+    try {
       await apiClient.retireAgent(agent.id);
+      setSelectedAgent(null);
       await fetchAgents();
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : 'Could not retire this agent.');
+    } finally {
+      setIsSaving(false);
     }
   };
 
   return (
-    <div className="p-4 flex flex-col space-y-4 text-xs overflow-y-auto max-h-[calc(100vh-140px)]">
-      {/* Header */}
-      <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+    <section className="agent-inspector app-panel">
+      <header className="agent-inspector-header">
+        <AgentAvatar agent={agent} size={64} />
         <div>
-          <h3 className="font-bold text-sm text-slate-100">{agent.display_name}</h3>
-          <p className="text-[11px] text-slate-400 font-mono">
-            {agent.department} • Level {agent.level} • {agent.role_key}
-          </p>
+          <h2>{agent.display_name}</h2>
+          <p>{agent.department} · Level {agent.level} · {agent.role_key}</p>
+          <span className={'agent-status-label agent-status-' + agent.status}>{agent.status}</span>
         </div>
-        <span
-          className={`px-2 py-0.5 rounded text-[10px] font-mono uppercase ${
-            agent.status === 'active' ? 'bg-emerald-950 text-emerald-400 border border-emerald-800' : 'bg-slate-800 text-slate-400'
-          }`}
-        >
-          {agent.status}
-        </span>
-      </div>
+      </header>
 
-      {/* Higher Manager Priority Notice */}
       {isHigherManager && (
-        <div className="p-2.5 rounded bg-purple-950/40 border border-purple-800/70 flex items-start gap-2">
-          <ShieldCheck size={15} className="text-purple-400 shrink-0 mt-0.5" />
-          <div className="text-[11px] leading-relaxed text-purple-200 font-mono">
-            <span className="font-semibold text-purple-100">Executive Priority:</span> Assigned to dedicated manager key pool with zero subordinate interference.
-          </div>
+        <div className="agent-executive-note">
+          <ShieldCheck size={15} />
+          <span><strong>Executive priority.</strong> This role uses the dedicated manager key pool when configured.</span>
         </div>
       )}
 
-      {/* Dedicated API Key Override */}
-      <div className="flex flex-col gap-1.5 p-2.5 rounded bg-slate-900/60 border border-slate-800">
-        <label className="text-[11px] font-semibold text-slate-300 flex items-center justify-between">
-          <span className="flex items-center gap-1.5">
-            <Key size={13} className="text-amber-400" />
-            Dedicated Agent API Key Override
-          </span>
-          {agent.has_custom_api_key && (
-            <span className="text-[10px] text-emerald-400 font-mono">Custom Key Set</span>
-          )}
-        </label>
-        <p className="text-[10px] text-slate-400 font-mono">
-          Give this manager their own API key to bypass pool sharing completely.
-        </p>
-
-        {agent.has_custom_api_key ? (
-          <div className="flex items-center justify-between bg-slate-950 px-2.5 py-1.5 rounded border border-slate-800">
-            <span className="font-mono text-slate-300 text-[11px]">
-              Active: {agent.masked_api_key || '••••••••••••'}
-            </span>
-            <button
-              onClick={handleClearCustomKey}
-              className="text-slate-400 hover:text-rose-400 flex items-center gap-1 text-[10px] transition-colors"
-              title="Clear custom key"
-            >
-              <Trash2 size={11} /> Clear
-            </button>
-          </div>
-        ) : (
-          <input
-            type="password"
-            placeholder="Paste personal Groq API key (e.g. gsk_...)"
-            value={customKeyInput}
-            onChange={(e) => setCustomKeyInput(e.target.value)}
-            className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-slate-200 text-xs font-mono focus:outline-none focus:border-amber-500"
-          />
-        )}
-      </div>
-
-      {/* Model Tier Selector */}
-      <div className="flex flex-col gap-1.5">
-        <label className="text-[11px] font-semibold text-slate-300">Model Tier</label>
-        <div className="grid grid-cols-3 gap-2">
+      <section className="agent-inspector-section">
+        <header><h3>Model configuration</h3><span>Execution tier</span></header>
+        <div className="agent-model-options">
           {['fast', 'smart', 'premium'].map((tier) => (
-            <button
-              key={tier}
-              onClick={() => setModelTier(tier)}
-              className={`py-1.5 px-2 rounded border font-mono text-center text-[11px] capitalize transition-all ${
-                modelTier === tier
-                  ? 'border-sky-500 bg-sky-950 text-sky-200 shadow-sm'
-                  : 'border-slate-800 bg-slate-900 text-slate-400 hover:border-slate-700'
-              }`}
-            >
+            <button key={tier} type="button" onClick={() => setModelTier(tier)} aria-pressed={modelTier === tier} className={modelTier === tier ? 'agent-model-option agent-model-option-selected' : 'agent-model-option'}>
               {tier}
             </button>
           ))}
         </div>
-      </div>
+      </section>
 
-      {/* Tools Granted */}
-      <div className="flex flex-col gap-1.5">
-        <label className="text-[11px] font-semibold text-slate-300">Active Permissions & Tools</label>
-        <div className="flex flex-wrap gap-1">
-          {agent.tools_json.map((tool) => (
-            <span
-              key={tool}
-              className="px-2 py-0.5 rounded bg-slate-800/80 border border-slate-700 text-slate-300 font-mono text-[10px]"
-            >
-              {tool}
-            </span>
-          ))}
+      <section className="agent-inspector-section">
+        <header><h3><KeyRound size={14} /> Dedicated API key</h3><span>{agent.has_custom_api_key ? 'Override set' : 'Using pool'}</span></header>
+        {agent.has_custom_api_key ? (
+          <div className="agent-key-current">
+            <span><strong>Active override</strong><code>{agent.masked_api_key || '••••••••••••'}</code></span>
+            <button type="button" onClick={() => void handleClearCustomKey()} disabled={isSaving || networkStatus === 'offline'}>
+              <Trash2 size={12} /> Clear
+            </button>
+          </div>
+        ) : (
+          <>
+            <p className="agent-field-help">Optional private provider key. It is never shown again after saving.</p>
+            <label htmlFor="agent-custom-key">API key</label>
+            <input id="agent-custom-key" type="password" autoComplete="new-password" value={customKeyInput} onChange={(event) => setCustomKeyInput(event.target.value)} placeholder="Paste provider key" />
+          </>
+        )}
+      </section>
+
+      <section className="agent-inspector-section">
+        <header><h3>Granted tools</h3><span>{agent.tools_json.length} permissions</span></header>
+        <div className="agent-tool-list">
+          {agent.tools_json.length ? agent.tools_json.map((tool) => <span key={tool}>{tool}</span>) : <p className="app-muted">No tools assigned.</p>}
         </div>
-      </div>
+      </section>
 
-      {/* System Prompt Live Editor */}
-      <div className="flex flex-col gap-1.5">
-        <label className="text-[11px] font-semibold text-slate-300">System Directives & Authority Prompt</label>
-        <textarea
-          rows={7}
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          className="w-full bg-slate-900/90 border border-slate-800 rounded p-2 text-slate-200 text-[11px] font-mono leading-relaxed focus:outline-none focus:border-sky-500"
-        />
-      </div>
+      <section className="agent-inspector-section">
+        <header><h3>System instructions</h3><span>Agent authority and behaviour</span></header>
+        <label htmlFor="agent-system-prompt">Prompt</label>
+        <textarea id="agent-system-prompt" rows={10} value={prompt} onChange={(event) => setPrompt(event.target.value)} />
+      </section>
 
-      {/* Action Buttons */}
-      <div className="flex items-center justify-between pt-2">
-        <button
-          onClick={handleRetire}
-          disabled={agent.status === 'retired'}
-          className="px-3 py-1.5 rounded border border-rose-900/50 text-rose-400 hover:bg-rose-950/30 flex items-center gap-1.5 transition-all text-xs"
-        >
+      {saveError && <p className="app-inline-error" role="alert">{saveError}</p>}
+      {isSaved && <p className="app-inline-success" role="status"><Check size={13} /> Agent settings saved.</p>}
+      {networkStatus === 'offline' && <p className="app-inline-note">Offline. Changes are unavailable until the backend reconnects.</p>}
+
+      <footer className="agent-inspector-actions">
+        <button type="button" className="app-button agent-retire-button" onClick={() => void handleRetire()} disabled={isSaving || networkStatus === 'offline' || agent.status === 'retired'}>
           <UserX size={13} /> Retire
         </button>
-
-        <button
-          onClick={handleSave}
-          disabled={isSaving}
-          className="px-4 py-1.5 rounded bg-sky-600 hover:bg-sky-500 text-white font-medium flex items-center gap-1.5 transition-all text-xs shadow-sm"
-        >
-          {isSaved ? <Check size={13} className="text-emerald-300" /> : <Save size={13} />}
-          {isSaved ? 'Saved' : isSaving ? 'Saving...' : 'Apply Changes'}
+        <button type="button" className="app-button app-button-primary" onClick={() => void handleSave()} disabled={isSaving || networkStatus === 'offline'}>
+          {isSaved ? <Check size={13} /> : <Save size={13} />}
+          {isSaving ? 'Saving' : isSaved ? 'Saved' : 'Save changes'}
         </button>
-      </div>
-    </div>
+      </footer>
+    </section>
   );
 };

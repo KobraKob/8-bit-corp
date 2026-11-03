@@ -1,0 +1,15 @@
+[
+  {
+    "date": "2026-11-03",
+    "mode": "redesign",
+    "depth": "full",
+    "scope": "app",
+    "theme": "Console",
+    "prompt": "Redesign the Pixel Corp virtual office, task board, task hierarchy, project workspace and company controls for reliable agent orchestration.",
+    "shape": "app screen",
+    "axes": "graphite surfaces / Host Grotesk / amber people signal / cool instrument signal",
+    "signature": "pixel office and task ledger",
+    "deal": "manual",
+    "imagery": "existing Phaser office plus generated agent portraits and supplied CEO Lottie"
+  }
+]

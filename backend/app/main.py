@@ -3,7 +3,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from sqlalchemy import text
+from sqlalchemy import select, text
 
 load_dotenv()
 
@@ -18,9 +18,11 @@ from app.api.usage import router as usage_router
 from app.api.ws import router as ws_router
 from app.core.config import get_app_settings
 from app.core.logging import logger
+from app.db.models import Agent, Project
 from app.db.session import async_session_factory, init_db
 from app.domain.org_model import seed_organization_from_config
 from app.orchestrator.scheduler import scheduler
+from app.workspace.workspace_manager import workspace_manager
 
 
 @asynccontextmanager
@@ -29,6 +31,12 @@ async def lifespan(app: FastAPI):
     logger.info("Starting Pixel Corp backend...")
     await init_db()
     await seed_organization_from_config()
+    # Reconcile private workspaces for existing projects and the current roster.
+    async with async_session_factory() as session:
+        project_ids = (await session.scalars(select(Project.id))).all()
+        active_agent_ids = (await session.scalars(select(Agent.id).where(Agent.status == "active"))).all()
+    for project_id in project_ids:
+        workspace_manager.provision_agent_directories(project_id, active_agent_ids)
     await scheduler.start()
     yield
     # Shutdown

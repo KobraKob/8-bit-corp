@@ -173,3 +173,30 @@ pixel-corp/
   DECISIONS.md            # Engineering decisions log
   build.md                # Project mission & architecture blueprint
 ```
+
+
+## Workspace and offline behaviour
+
+Every project gets an independent workspace under `workspaces/{project_id}/`. Active agents receive an individual folder inside that project:
+
+```text
+workspaces/
+  {project_id}/
+    agents/
+      {agent_id}/       # private working directory
+      {another_id}/     # another agent's private directory
+    shared/             # deliberate cross-agent handoffs
+    artifacts/          # registered deliverables
+```
+
+Agent file tools, file listing, and the code runner use the calling agent's private folder by default. An agent can deliberately use the `shared/` prefix to hand work to another agent. Deliverables must be registered with `create_artifact`, which writes into the project's `artifacts/` folder and persists the artifact record. Path traversal and absolute paths are rejected.
+
+The backend provisions directories for the active roster when a project is created, when an agent is hired, and during startup reconciliation for existing projects.
+
+The web app keeps the most recently fetched project, task-tree, agent, approval, key, usage and event data in memory while the app remains open. A lost connection switches the interface to an offline/degraded state, aborts pending requests, retains previously loaded information, and disables actions that need the server. Requests have an eight-second timeout when the browser reports an online connection but the backend does not respond. A fresh browser session opened while offline cannot restore a previous in-memory snapshot.
+
+## Workspace interface
+
+The Hallmark Console interface uses graphite surfaces, restrained amber for human activity, cool blue for system information, and a readable sans/monospace hierarchy. The project workspace separates the Kanban board, task hierarchy, agent inspector, and deliverables from company tools such as approvals, people, the activity log, API keys, and project portfolio.
+
+Task board columns cover every task status. Project progress is calculated from completed work packages, not token consumption. The CEO uses the supplied local Lottie animation in the office and in agent views, with a static portrait fallback and reduced-motion support. Other agents have distinct deterministic pixel portraits.
