@@ -40,6 +40,7 @@ interface AppState {
   lastEventId: number;
   selectedRoom: string | null;
   replayEventId: number | null;
+  replayVersion: number;
 
   // Actions
   fetchProjects: () => Promise<void>;
@@ -77,6 +78,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   lastEventId: 0,
   selectedRoom: null,
   replayEventId: null,
+  replayVersion: 0,
 
   fetchProjects: async () => {
     try {
@@ -148,7 +150,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   setActiveDrawerTab: (tab) => set({ activeDrawerTab: tab }),
   togglePause: () => set((state) => ({ isPaused: !state.isPaused })),
   setSelectedRoom: (room) => set({ selectedRoom: room }),
-  setReplayEvent: (eventId) => set({ replayEventId: eventId }),
+  setReplayEvent: (eventId) => set((state) => ({ replayEventId: eventId, replayVersion: state.replayVersion + 1 })),
 
   handleIncomingEvent: (evt: EventPayload) => {
     set((state) => {
