@@ -18,6 +18,11 @@ from app.orchestrator.review import ReviewEngine
 from app.orchestrator.triage import CEOTriage
 
 
+def dependencies_are_complete(dependencies: List[str], statuses_by_id: Dict[str, str]) -> bool:
+    """Return true only when every referenced task ID exists and is done."""
+    return all(statuses_by_id.get(dependency_id) == TaskStatus.DONE.value for dependency_id in set(dependencies))
+
+
 class Scheduler:
     """Async execution scheduler with crash-safety, depth-first queueing, and lifecycle management."""
 
@@ -128,9 +133,7 @@ class Scheduler:
                     dep_res = await session.execute(dep_stmt)
                     dependency_statuses = dict(dep_res.all())
                     # Missing IDs are unresolved dependencies, never implicitly ready.
-                    if len(dependency_statuses) == len(set(deps)) and all(
-                        dependency_statuses.get(dep_id) == TaskStatus.DONE.value for dep_id in deps
-                    ):
+                    if dependencies_are_complete(deps, dependency_statuses):
                         ready.append(t)
 
             # Sort: Depth-first bias (higher depth first), then priority (lower number is higher priority), then created_at
