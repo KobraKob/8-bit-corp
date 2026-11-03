@@ -4,6 +4,7 @@ from app.core.ids import generate_id
 from app.db.models import Agent, CompanyMeeting, Project, Task
 from app.db.session import async_session_factory
 from app.events.event_bus import event_bus
+from app.events.event_types import EventType
 
 
 async def convene_project_meeting(project_id: str, reason: str = "manual", trigger_task_id: str | None = None):
@@ -120,7 +121,7 @@ async def convene_project_meeting(project_id: str, reason: str = "manual", trigg
         await session.refresh(meeting)
 
     await event_bus.emit(
-        event_type="company.meeting_completed",
+        event_type=EventType.COMPANY_MEETING_COMPLETED,
         project_id=project_id,
         payload={"meeting_id": meeting.id, "title": meeting.title, "decision_count": len(decisions), "trigger": reason},
     )
