@@ -9,9 +9,12 @@ import { OrgEditorPanel } from '../panels/OrgEditorPanel';
 import { EventLogPanel } from '../panels/EventLogPanel';
 import { KeyPoolPanel } from '../panels/KeyPoolPanel';
 import { ProjectsPanel } from '../panels/ProjectsPanel';
+import { CompanyMemoryPanel } from '../panels/CompanyMemoryPanel';
+import { EmployeeIntelligencePanel } from '../panels/EmployeeIntelligencePanel';
+import { CompanyMeetingsPanel } from '../panels/CompanyMeetingsPanel';
 import {
   Network, Kanban, UserRound, FileText, ShieldAlert, Users,
-  Activity, KeyRound, BriefcaseBusiness, X,
+  Activity, KeyRound, BriefcaseBusiness, X, BookOpen, BarChart3, Video,
 } from 'lucide-react';
 
 type Tab = { id: ActiveDrawerTab; label: string; icon: React.FC<{ size?: number }> };
@@ -28,6 +31,9 @@ const COMPANY_TABS: Tab[] = [
   { id: 'events', label: 'Activity', icon: Activity },
   { id: 'keys', label: 'API keys', icon: KeyRound },
   { id: 'projects', label: 'Projects', icon: BriefcaseBusiness },
+  { id: 'memory', label: 'Memory', icon: BookOpen },
+  { id: 'intelligence', label: 'Intelligence', icon: BarChart3 },
+  { id: 'meetings', label: 'Meetings', icon: Video },
 ];
 
 function TabButton({ tab, active, count, onClick }: {
@@ -117,6 +123,9 @@ export const RightDrawer: React.FC = () => {
         {activeDrawerTab === 'approvals' && <ApprovalsPanel />}
         {activeDrawerTab === 'org' && <OrgEditorPanel />}
         {activeDrawerTab === 'events' && <EventLogPanel />}
+        {activeDrawerTab === 'memory' && <CompanyMemoryPanel />}
+        {activeDrawerTab === 'intelligence' && <EmployeeIntelligencePanel />}
+        {activeDrawerTab === 'meetings' && <CompanyMeetingsPanel />}
       </div>
     </aside>
   );
