@@ -4,7 +4,7 @@ import { apiClient } from '../api/client';
 import { Key, Plus, Trash2, RefreshCw, ShieldCheck, Zap, AlertTriangle, Clock } from 'lucide-react';
 
 export const KeyPoolPanel: React.FC = () => {
-  const { keyStatuses, fetchKeys } = useAppStore();
+  const { keyStatuses, fetchKeys, networkStatus } = useAppStore();
   const [newKey, setNewKey] = useState('');
   const [alias, setAlias] = useState('');
   const [isManagerDedicated, setIsManagerDedicated] = useState(false);
@@ -12,11 +12,18 @@ export const KeyPoolPanel: React.FC = () => {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchKeys();
-    const interval = setInterval(() => {
-      fetchKeys();
-    }, 5000);
-    return () => clearInterval(interval);
+    void fetchKeys();
+    const refreshWhenVisible = () => {
+      if (navigator.onLine && document.visibilityState === 'visible') void fetchKeys();
+    };
+    const interval = window.setInterval(refreshWhenVisible, 30000);
+    window.addEventListener('online', refreshWhenVisible);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('online', refreshWhenVisible);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+    };
   }, []);
 
   const handleAddKey = async (e: React.FormEvent) => {
@@ -78,6 +85,8 @@ export const KeyPoolPanel: React.FC = () => {
         </button>
       </div>
 
+      {networkStatus === 'offline' && <p className='app-inline-note' role='status'>Offline. Showing the last available key status. Key changes require a server connection.</p>}
+
       {/* Pool Stats Card */}
       <div className="grid grid-cols-3 gap-2">
         <div className="bg-slate-900/80 border border-slate-800 rounded p-2 text-center">
@@ -105,7 +114,7 @@ export const KeyPoolPanel: React.FC = () => {
           keyStatuses.map((k) => (
             <div
               key={k.alias}
-              className={`p-2.5 rounded border transition-all flex flex-col gap-1.5 ${
+              className={`p-2.5 rounded border transition-colors flex flex-col gap-1.5 ${
                 k.is_healthy
                   ? 'bg-slate-900/70 border-slate-800'
                   : 'bg-amber-950/20 border-amber-900/50'
