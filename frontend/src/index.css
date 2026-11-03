@@ -21,6 +21,18 @@
   --color-ok-soft: oklch(24.5% 0.03 150);
   --color-bad: oklch(70% 0.17 25);
   --color-bad-soft: oklch(24.5% 0.035 25);
+  --pixel-avatar-skin-1: oklch(82% 0.075 65);
+  --pixel-avatar-skin-2: oklch(70% 0.105 55);
+  --pixel-avatar-skin-3: oklch(55% 0.095 45);
+  --pixel-avatar-skin-4: oklch(40% 0.07 45);
+  --pixel-avatar-skin-5: oklch(76% 0.08 65);
+  --pixel-avatar-hair-1: oklch(24% 0.025 45);
+  --pixel-avatar-hair-2: oklch(32% 0.045 50);
+  --pixel-avatar-hair-3: oklch(19% 0.012 250);
+  --pixel-avatar-hair-4: oklch(48% 0.12 45);
+  --pixel-avatar-hair-5: oklch(78% 0.015 80);
+  --pixel-avatar-hair-6: oklch(34% 0.09 320);
+  --pixel-avatar-line: oklch(29% 0.03 45);
   --color-focus: oklch(82% 0.15 80);
   --font-display: "Host Grotesk", ui-sans-serif, system-ui, sans-serif;
   --font-body: var(--font-display);
