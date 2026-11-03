@@ -24,10 +24,10 @@ export const Shell: React.FC = () => {
 
   useEffect(() => {
     const refreshAll = () => {
-      if (!navigator.onLine) {
-        setNetworkStatus('offline');
-        return;
-      }
+      if (!navigator.onLine) setNetworkStatus('offline');
+      // Invoke resource loaders even offline. The API client rejects immediately,
+      // which records an explicit unavailable state instead of leaving empty
+      // panels looking like successful, never-started requests.
       void fetchProjects();
       void fetchApprovals();
       void fetchUsage();
@@ -38,7 +38,7 @@ export const Shell: React.FC = () => {
     };
 
     refreshAll();
-    wsClient.connect();
+    if (navigator.onLine) wsClient.connect();
 
     const onOffline = () => {
       setNetworkStatus('offline');
