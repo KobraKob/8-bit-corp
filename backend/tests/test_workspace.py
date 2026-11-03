@@ -78,3 +78,25 @@ def test_agent_workspace_rejects_path_traversal(tmp_path: Path):
         ws.write_agent_file("project_safe", "agent_safe", "C:/outside.txt", "blocked")
     with pytest.raises(SecurityViolationError):
         ws.write_agent_file("project_safe", "agent_safe", "/outside.txt", "blocked")
+
+
+
+def test_project_provisions_a_separate_workspace_for_every_active_agent(tmp_path: Path):
+    ws = WorkspaceManager(root_path=tmp_path)
+    paths = ws.provision_agent_directories(
+        "project_with_roster",
+        ["agent_ceo", "agent_researcher", "agent_designer"],
+    )
+
+    assert len(paths) == 3
+    assert len(set(paths)) == 3
+    assert all(path.is_dir() for path in paths)
+    assert all(path.parent.name == "agents" for path in paths)
+    assert (tmp_path / "project_with_roster" / "shared").is_dir()
+    assert (tmp_path / "project_with_roster" / "artifacts").is_dir()
+
+
+def test_agents_cannot_write_unregistered_files_into_artifacts(tmp_path: Path):
+    ws = WorkspaceManager(root_path=tmp_path)
+    with pytest.raises(SecurityViolationError):
+        ws.write_agent_file("project_artifacts", "agent_writer", "artifacts/rough.txt", "draft")
