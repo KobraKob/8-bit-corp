@@ -9,6 +9,7 @@ from app.domain.dag import detect_cycles_in_subtasks
 from app.tools.sandbox import sandbox
 from app.tools.web_guard import safe_fetch_url, search_web
 from app.workspace.workspace_manager import workspace_manager
+from app.orchestrator.company_memory import save_memory, search_memory
 
 # Function schemas formatted for OpenAI tool calling spec
 TOOL_DEFINITIONS: Dict[str, Dict[str, Any]] = {
@@ -332,33 +333,22 @@ class ToolExecutor:
                 return {"success": True, "content": text}
 
             elif tool_name == "wiki_search":
-                query = args.get("query", "").lower()
-                async with async_session_factory() as session:
-                    stmt = select(WikiNote).where(
-                        (WikiNote.project_id == self.project_id) | (WikiNote.project_id.is_(None))
-                    )
-                    res = await session.execute(stmt)
-                    notes = res.scalars().all()
-                    matches = [
-                        {"id": n.id, "title": n.title, "tags": n.tags, "body": n.body}
-                        for n in notes
-                        if query in n.title.lower() or query in n.body.lower() or query in n.tags.lower()
-                    ]
+                notes = await search_memory(args.get("query", ""), self.project_id, 30)
+                matches = [
+                    {"id": n.id, "title": n.title, "tags": n.tags, "body": n.body, "project_id": n.project_id}
+                    for n in notes
+                ]
                 return {"success": True, "matches": matches}
 
             elif tool_name == "wiki_write":
-                async with async_session_factory() as session:
-                    note = WikiNote(
-                        id=f"wn_{args['title'].lower().replace(' ', '_')[:30]}",
-                        project_id=self.project_id,
-                        title=args["title"],
-                        body=args["body"],
-                        tags=args.get("tags", ""),
-                        created_by_agent_id=self.agent_id,
-                    )
-                    session.add(note)
-                    await session.commit()
-                return {"success": True, "message": "Wiki note saved."}
+                note = await save_memory(
+                    title=args["title"],
+                    body=args["body"],
+                    tags=args.get("tags", ""),
+                    project_id=self.project_id,
+                    created_by_agent_id=self.agent_id,
+                )
+                return {"success": True, "id": note.id, "message": "Company memory saved or updated."}
 
             elif tool_name == "delegate":
                 # Validate DAG cycles
