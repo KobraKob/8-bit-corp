@@ -51,10 +51,16 @@ class IntegrationEngine:
                 artifacts = (await session.execute(
                     select(Artifact).where(Artifact.task_id == child.id)
                 )).scalars().all()
-                artifact_lines = "\n".join(
-                    f"- {artifact.kind}: {artifact.path} — {artifact.summary}"
-                    for artifact in artifacts
-                ) or "- No file artifact attached; see completed task notes."
+                artifact_sections = []
+                for artifact in artifacts:
+                    section = f"#### {artifact.title or artifact.path}\n- Type: {artifact.kind}\n- File: {artifact.path}\n- Summary: {artifact.summary}"
+                    if artifact.kind in ("markdown", "text", "code") and artifact.content:
+                        excerpt = artifact.content[:12000]
+                        section += f"\n\n{excerpt}"
+                        if len(artifact.content) > 12000:
+                            section += "\n\n[Content excerpt truncated at 12,000 characters.]"
+                    artifact_sections.append(section)
+                artifact_lines = "\n\n".join(artifact_sections) or "- No file artifact attached; see completed task notes."
                 summaries.append(
                     f"### {child.title}\n- Assignee: {child.assignee_agent_id or 'Unassigned'}"
                     f"\n- Description: {child.description}\n{artifact_lines}"

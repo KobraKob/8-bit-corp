@@ -66,7 +66,12 @@ class ReviewEngine:
             if task.deliverable_artifact_id:
                 art = await session.get(Artifact, task.deliverable_artifact_id)
                 if art:
-                    deliverable_content = f"Artifact: {art.path}\nSummary: {art.summary}"
+                    content_excerpt = (art.content or art.summary or "")[:20000]
+                    deliverable_content = (
+                        f"Artifact: {art.title or art.path}\n"
+                        f"Path: {art.path}\nSummary: {art.summary}\n"
+                        f"Content:\n{content_excerpt}"
+                    )
 
             assignee = await session.get(Agent, task.assignee_agent_id) if task.assignee_agent_id else None
             assignee_name = assignee.display_name if assignee else "Worker Agent"

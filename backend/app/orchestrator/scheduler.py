@@ -184,7 +184,7 @@ class Scheduler:
                     existing_child = await session.scalar(
                         select(Task.id).where(Task.parent_id == task.id).limit(1)
                     )
-                    ceo = await session.get(Agent, task.assignee_agent_id)
+                    ceo = await session.get(Agent, task.assignee_agent_id) if task.assignee_agent_id else None
                 if existing_child:
                     await IntegrationEngine.integrate_parent_task(task.id)
                     return
