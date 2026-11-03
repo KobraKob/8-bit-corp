@@ -64,6 +64,19 @@ async def _migrate_sqlite_schema(conn) -> None:
     if usage_cols and "key_alias" not in usage_cols:
         await conn.execute(text("ALTER TABLE daily_usage ADD COLUMN key_alias VARCHAR(100) DEFAULT 'default' NOT NULL;"))
 
+    # 4. company_meetings.title
+    # Older local SQLite databases predate the meeting title field. Keep their
+    # existing meeting history and provide a safe title for legacy rows.
+    res = await conn.execute(text("PRAGMA table_info(company_meetings);"))
+    meeting_cols = [r[1] for r in res.fetchall()]
+    if meeting_cols and "title" not in meeting_cols:
+        await conn.execute(
+            text(
+                "ALTER TABLE company_meetings "
+                "ADD COLUMN title VARCHAR(255) NOT NULL DEFAULT 'Project meeting';"
+            )
+        )
+
 
 async def init_db(engine_override=None) -> None:
     """Initialize database tables and set SQLite WAL mode if applicable."""
