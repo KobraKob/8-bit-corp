@@ -160,7 +160,7 @@ export const AgentInspectorPanel: React.FC = () => {
               onClick={() => setModelTier(tier)}
               className={`py-1.5 px-2 rounded border font-mono text-center text-[11px] capitalize transition-colors ${
                 modelTier === tier
-                  ? 'border-sky-500 bg-sky-950 text-sky-200 shadow-sm'
+                  ? 'border-sky-500 bg-sky-950 text-sky-200 '
                   : 'border-slate-800 bg-slate-900 text-slate-400 hover:border-slate-700'
               }`}
             >
@@ -210,7 +210,7 @@ export const AgentInspectorPanel: React.FC = () => {
         <button
           onClick={handleSave}
           disabled={isSaving || networkStatus === 'offline'}
-          className="px-4 py-1.5 rounded bg-sky-600 hover:bg-sky-500 text-white font-medium flex items-center gap-1.5 transition-all text-xs shadow-sm"
+          className="px-4 py-1.5 rounded bg-sky-600 hover:bg-sky-500 text-white font-medium flex items-center gap-1.5 transition-colors text-xs "
         >
           {isSaved ? <Check size={13} className="text-emerald-300" /> : <Save size={13} />}
           {isSaved ? 'Saved' : isSaving ? 'Saving...' : 'Apply Changes'}
