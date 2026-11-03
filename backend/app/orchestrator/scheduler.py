@@ -7,7 +7,7 @@ from app.agents.runtime import AgentRuntime
 from app.core.config import get_app_settings
 from app.core.ids import generate_id
 from app.core.logging import logger
-from app.db.models import Agent, Task
+from app.db.models import Agent, Project, Task
 from app.db.session import async_session_factory
 from app.domain.task_fsm import TaskFSM, TaskStatus
 from app.events.event_bus import event_bus
@@ -47,6 +47,9 @@ class Scheduler:
         if self.running:
             return
         self.running = True
+        async with async_session_factory() as session:
+            paused_ids = await session.scalars(select(Project.id).where(Project.status == "paused"))
+            self._paused_projects = set(paused_ids.all())
         await self.recover_stuck_tasks_on_startup()
         self._worker_task = asyncio.create_task(self._scheduler_loop())
         logger.info("Scheduler background loop started.")

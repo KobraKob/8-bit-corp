@@ -24,6 +24,7 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     const errorText = await res.text();
     throw new Error(`API error (${res.status}): ${errorText}`);
   }
+  if (res.status === 204) return undefined as T;
   return res.json();
 }
 
@@ -31,6 +32,10 @@ export const apiClient = {
   // Projects
   getProjects: () => request<Project[]>('/projects'),
   getProject: (id: string) => request<Project>(`/projects/${id}`),
+  pauseProject: (id: string) => request<Project>(`/projects/${id}/pause`, { method: 'POST' }),
+  resumeProject: (id: string) => request<Project>(`/projects/${id}/resume`, { method: 'POST' }),
+  stopProject: (id: string) => request<Project>(`/projects/${id}/stop`, { method: 'POST' }),
+  deleteProject: (id: string) => request<void>(`/projects/${id}`, { method: 'DELETE' }),
   createProject: (data: { name: string; client_name?: string; brief: string; due_at?: string }) =>
     request<Project>('/projects', {
       method: 'POST',

@@ -3,7 +3,7 @@ from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
 
 from app.api.schemas import TaskResponse
-from app.db.models import Message, Task
+from app.db.models import Message, Project, Task
 from app.db.session import async_session_factory
 from app.domain.task_fsm import TaskStatus
 from app.orchestrator.scheduler import scheduler
@@ -74,8 +74,11 @@ async def cancel_task(task_id: str):
 async def pause_task(task_id: str):
     async with async_session_factory() as session:
         t = await session.get(Task, task_id)
-        if not t:
-            raise HTTPException(status_code=404, detail="Task not found")
+        if not t: raise HTTPException(status_code=404, detail="Task not found")
+        project = await session.get(Project, t.project_id)
+        if project and project.status not in ("completed", "stopped"):
+            project.status = "paused"
+            await session.commit()
         await scheduler.pause_project(t.project_id)
     return {"success": True, "message": f"Project for task {task_id} paused."}
 
@@ -84,8 +87,11 @@ async def pause_task(task_id: str):
 async def resume_task(task_id: str):
     async with async_session_factory() as session:
         t = await session.get(Task, task_id)
-        if not t:
-            raise HTTPException(status_code=404, detail="Task not found")
+        if not t: raise HTTPException(status_code=404, detail="Task not found")
+        project = await session.get(Project, t.project_id)
+        if project and project.status == "paused":
+            project.status = "active"
+            await session.commit()
         await scheduler.resume_project(t.project_id)
     return {"success": True, "message": f"Project for task {task_id} resumed."}
 

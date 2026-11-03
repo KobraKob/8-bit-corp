@@ -1,10 +1,11 @@
 import io
+import shutil
 import zipfile
 from pathlib import Path
 from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from app.api.schemas import (
     ProjectCreateRequest,
@@ -14,9 +15,10 @@ from app.api.schemas import (
     TaskTreeNode,
 )
 from app.core.ids import generate_id
-from app.db.models import Agent, Project, Task
+from app.db.models import Agent, Approval, Project, Task, WikiNote
 from app.db.session import async_session_factory
 from app.domain.task_fsm import TaskStatus
+from app.orchestrator.scheduler import scheduler
 from app.events.event_bus import event_bus
 from app.events.event_types import EventType
 from app.workspace.workspace_manager import workspace_manager
@@ -65,6 +67,65 @@ async def get_project(project_id: str):
         if not proj:
             raise HTTPException(status_code=404, detail="Project not found")
         return proj
+
+
+@router.post("/{project_id}/pause", response_model=ProjectResponse)
+async def pause_project(project_id: str):
+    async with async_session_factory() as session:
+        project = await session.get(Project, project_id)
+        if not project: raise HTTPException(status_code=404, detail="Project not found")
+        if project.status in ("completed", "stopped"): raise HTTPException(status_code=409, detail=f"Cannot pause a {project.status} project")
+        project.status = "paused"
+        await session.commit()
+        await session.refresh(project)
+    await scheduler.pause_project(project_id)
+    return project
+
+
+@router.post("/{project_id}/resume", response_model=ProjectResponse)
+async def resume_project(project_id: str):
+    async with async_session_factory() as session:
+        project = await session.get(Project, project_id)
+        if not project: raise HTTPException(status_code=404, detail="Project not found")
+        if project.status != "paused": raise HTTPException(status_code=409, detail="Only paused projects can be resumed")
+        project.status = "active"
+        await session.commit()
+        await session.refresh(project)
+    await scheduler.resume_project(project_id)
+    return project
+
+
+@router.post("/{project_id}/stop", response_model=ProjectResponse)
+async def stop_project(project_id: str):
+    async with async_session_factory() as session:
+        project = await session.get(Project, project_id)
+        if not project: raise HTTPException(status_code=404, detail="Project not found")
+        if project.status == "completed": raise HTTPException(status_code=409, detail="Completed projects cannot be stopped")
+        if project.status == "stopped": return project
+        root_ids = (await session.execute(select(Task.id).where(Task.project_id == project_id, Task.parent_id.is_(None)))).scalars().all()
+        project.status = "stopped"
+        await session.commit()
+        await session.refresh(project)
+    await scheduler.pause_project(project_id)
+    for root_id in root_ids: await scheduler.cancel_task_subtree(root_id)
+    return project
+
+
+@router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_project(project_id: str):
+    async with async_session_factory() as session:
+        project = await session.get(Project, project_id)
+        if not project: raise HTTPException(status_code=404, detail="Project not found")
+        if project.status not in ("completed", "stopped"):
+            raise HTTPException(status_code=409, detail="Stop the project before deleting it. This protects running work.")
+        await session.execute(delete(Approval).where(Approval.project_id == project_id))
+        await session.execute(delete(WikiNote).where(WikiNote.project_id == project_id))
+        await session.delete(project)
+        await session.commit()
+    scheduler._paused_projects.discard(project_id)
+    project_dir = workspace_manager.get_project_dir(project_id)
+    if project_dir.exists(): shutil.rmtree(project_dir)
+    return None
 
 
 @router.post("/{project_id}/tasks", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
