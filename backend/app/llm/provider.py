@@ -1,10 +1,24 @@
 import json
 import time
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from typing import Any, Dict, List, Optional, Protocol, runtime_checkable
 from openai import AsyncOpenAI
 
 from app.core.logging import logger
 from app.llm.types import ChatMessage, ChatRequest, ChatResponse, ToolCallRequest, UsageInfo
+
+
+class ProviderRequestError(Exception):
+    """Normalized provider failure with retry and cooldown metadata."""
+
+    def __init__(self, message: str, *, status_code: Optional[int] = None,
+                 retry_after: Optional[float] = None, retryable: bool = False):
+        super().__init__(message)
+        self.status_code = status_code
+        self.retry_after = retry_after
+        self.retryable = retryable
+        self.rate_limited = status_code == 429
 
 
 @runtime_checkable
@@ -217,7 +231,7 @@ class GenericOpenAICompatProvider:
     def get_client(self, api_key: Optional[str] = None) -> AsyncOpenAI:
         effective_key = api_key or self.default_api_key
         if effective_key not in self._clients:
-            self._clients[effective_key] = AsyncOpenAI(base_url=self.base_url, api_key=effective_key)
+            self._clients[effective_key] = AsyncOpenAI(base_url=self.base_url, api_key=effective_key, timeout=60.0, max_retries=0)
         return self._clients[effective_key]
 
     async def chat(self, req: ChatRequest) -> ChatResponse:
@@ -256,7 +270,36 @@ class GenericOpenAICompatProvider:
         if req.response_format:
             kwargs["response_format"] = req.response_format
 
-        response = await client.chat.completions.create(**kwargs)
+        try:
+            response = await client.chat.completions.create(**kwargs)
+        except Exception as exc:
+            status_code = getattr(exc, "status_code", None)
+            response_obj = getattr(exc, "response", None)
+            headers = getattr(response_obj, "headers", {}) or {}
+            retry_after = None
+            raw_retry_after = headers.get("retry-after") or headers.get("Retry-After")
+            if raw_retry_after:
+                try:
+                    retry_after = max(0.0, float(raw_retry_after))
+                except (TypeError, ValueError):
+                    try:
+                        retry_at = parsedate_to_datetime(raw_retry_after)
+                        if retry_at.tzinfo is None:
+                            retry_at = retry_at.replace(tzinfo=timezone.utc)
+                        retry_after = max(0.0, (retry_at - datetime.now(timezone.utc)).total_seconds())
+                    except (TypeError, ValueError, OverflowError):
+                        retry_after = None
+            retryable = (
+                status_code in (408, 409, 425, 429)
+                or (isinstance(status_code, int) and status_code >= 500)
+                or exc.__class__.__name__ in ("APITimeoutError", "APIConnectionError")
+            )
+            raise ProviderRequestError(
+                f"{self.__class__.__name__} request failed: {exc}",
+                status_code=status_code,
+                retry_after=retry_after,
+                retryable=retryable,
+            ) from exc
         latency_ms = (time.monotonic() - start_time) * 1000.0
 
         choice = response.choices[0]
@@ -293,8 +336,37 @@ class GenericOpenAICompatProvider:
 
 
 class GroqProvider(GenericOpenAICompatProvider):
-    """Groq-specific OpenAI-compatible client adapter."""
-    pass
+    """Groq chat-completions adapter."""
+
+
+class OpenAICompatibleProvider(GenericOpenAICompatProvider):
+    """Adapter for vLLM, OpenAI-compatible gateways, and compatible local servers."""
+
+
+class OllamaProvider(GenericOpenAICompatProvider):
+    """Ollama's OpenAI-compatible /v1 chat endpoint adapter."""
+
+
+class ProviderFactory:
+    """Explicit provider adapter registry; unknown adapter types fail at startup."""
+
+    ADAPTERS = {
+        "groq": GroqProvider,
+        "openai_compatible": OpenAICompatibleProvider,
+        "ollama": OllamaProvider,
+    }
+
+    @classmethod
+    def create(cls, name: str, adapter: str, base_url: str, api_key: str) -> LLMProvider:
+        if name == "mock" or adapter == "mock":
+            return MockProvider()
+        provider_cls = cls.ADAPTERS.get(adapter)
+        if provider_cls is None:
+            raise ValueError(
+                f"Unsupported adapter '{adapter}' for provider '{name}'. "
+                f"Supported adapters: {', '.join(sorted(cls.ADAPTERS))}, mock."
+            )
+        return provider_cls(base_url=base_url, api_key=api_key)
 
 
 class AnthropicProviderStub:

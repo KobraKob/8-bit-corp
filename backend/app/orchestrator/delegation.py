@@ -1,5 +1,5 @@
 from typing import Any, Dict, List, Optional
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 
 from app.core.config import get_app_settings
 from app.core.errors import CycleDetectedError, InvalidStateTransitionError
@@ -80,9 +80,39 @@ class DelegationEngine:
             if not parent:
                 raise ValueError(f"Parent task {parent_task_id} not found")
 
-            # Check existing child count
+            # A task may delegate once. Existing children make retries idempotent.
+            existing_children_stmt = select(Task).where(Task.parent_id == parent_task_id).order_by(Task.created_at.asc())
+            existing_children = (await session.execute(existing_children_stmt)).scalars().all()
+            if existing_children:
+                return existing_children
+            max_delegations = settings.settings.max_delegations_per_task
+            if parent.delegation_count >= max_delegations:
+                raise InvalidStateTransitionError(
+                    f"Task {parent_task_id} reached its delegation limit ({max_delegations})."
+                )
+
             child_count_stmt = select(func.count(Task.id)).where(Task.parent_id == parent_task_id)
             existing_count = (await session.execute(child_count_stmt)).scalar() or 0
+            project_task_count = (await session.execute(
+                select(func.count(Task.id)).where(Task.project_id == parent.project_id)
+            )).scalar() or 0
+            if project_task_count + len(subtasks_data) > settings.settings.max_project_tasks:
+                raise InvalidStateTransitionError(
+                    f"Delegation would exceed the project task limit ({settings.settings.max_project_tasks})."
+                )
+
+            # Claim this task's single delegation slot atomically. This prevents
+            # concurrent workers from creating duplicate child trees.
+            delegation_claim = await session.execute(
+                update(Task)
+                .where(Task.id == parent_task_id, Task.delegation_count == parent.delegation_count)
+                .values(delegation_count=Task.delegation_count + 1)
+            )
+            if delegation_claim.rowcount != 1:
+                concurrent_children = (await session.execute(existing_children_stmt)).scalars().all()
+                if concurrent_children:
+                    return concurrent_children
+                raise InvalidStateTransitionError("Another worker already consumed this task's delegation slot.")
 
             # Guard validation
             TaskFSM.validate_delegation_guard(

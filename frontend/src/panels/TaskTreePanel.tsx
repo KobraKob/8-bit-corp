@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAppStore } from '../state/useAppStore';
-import { TaskTreeNode } from '../api/types';
+import { TaskLogEntry, TaskTreeNode } from '../api/types';
+import { apiClient } from '../api/client';
 import {
   CheckCircle2,
   Clock,
@@ -76,6 +77,7 @@ function TaskNodeItem({ node }: { node: TaskTreeNode }) {
 
         <div className="flex items-center justify-between mt-2 pt-1.5 border-t border-slate-800/60 text-[10px] text-slate-500 font-mono">
           <span>Depth: {node.depth}</span>
+          <span>Attempt: {node.attempt}/{node.max_attempts}</span>
           {node.assignee_agent_id && (
             <button
               onClick={(e) => {
@@ -120,8 +122,39 @@ function countTreeNodes(nodes: TaskTreeNode[]): { total: number; done: number; i
 }
 
 export const TaskTreePanel: React.FC = () => {
-  const { taskTree, fetchTaskTree, activeProjectId } = useAppStore();
+  const { taskTree, fetchTaskTree, selectedTaskId } = useAppStore();
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [taskLogs, setTaskLogs] = useState<TaskLogEntry[]>([]);
+  const [logsLoading, setLogsLoading] = useState(false);
+  const [logsError, setLogsError] = useState<string | null>(null);
+
+  const refreshTaskLogs = async () => {
+    if (!selectedTaskId) return;
+    setLogsLoading(true);
+    setLogsError(null);
+    try {
+      setTaskLogs(await apiClient.getTaskLogs(selectedTaskId, 200));
+    } catch (error) {
+      setLogsError(error instanceof Error ? error.message : 'Unable to load task logs.');
+    } finally {
+      setLogsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    let active = true;
+    setTaskLogs([]);
+    setLogsError(null);
+    if (!selectedTaskId) return () => { active = false; };
+    setLogsLoading(true);
+    apiClient.getTaskLogs(selectedTaskId, 200)
+      .then((logs) => { if (active) setTaskLogs(logs); })
+      .catch((error) => {
+        if (active) setLogsError(error instanceof Error ? error.message : 'Unable to load task logs.');
+      })
+      .finally(() => { if (active) setLogsLoading(false); });
+    return () => { active = false; };
+  }, [selectedTaskId]);
 
   const { total, done, inProgress } = countTreeNodes(taskTree);
 
@@ -174,6 +207,50 @@ export const TaskTreePanel: React.FC = () => {
       {taskTree.map((root) => (
         <TaskNodeItem key={root.id} node={root} />
       ))}
+
+      {selectedTaskId && (
+        <section className="mt-3 rounded-lg border border-slate-800 bg-slate-950/80 overflow-hidden">
+          <header className="flex items-center justify-between gap-2 px-3 py-2 border-b border-slate-800">
+            <div className="min-w-0">
+              <div className="text-[11px] font-bold text-slate-200">Task diagnostics</div>
+              <div className="text-[9px] font-mono text-slate-500 truncate">{selectedTaskId}</div>
+            </div>
+            <button
+              onClick={() => void refreshTaskLogs()}
+              disabled={logsLoading}
+              className="text-[10px] text-sky-400 hover:text-sky-300 disabled:opacity-50"
+            >
+              {logsLoading ? 'Loading…' : 'Refresh'}
+            </button>
+          </header>
+          {logsError && <p className="px-3 py-2 text-[10px] text-rose-400">{logsError}</p>}
+          {!logsLoading && !logsError && taskLogs.length === 0 && (
+            <p className="px-3 py-3 text-[10px] text-slate-500">No execution logs recorded yet.</p>
+          )}
+          <div className="max-h-64 overflow-y-auto divide-y divide-slate-900">
+            {taskLogs.map((log) => (
+              <details key={log.id} className="px-3 py-2 group">
+                <summary className="list-none cursor-pointer flex items-start gap-2">
+                  <span className={`shrink-0 uppercase text-[9px] font-bold ${log.level === 'error' ? 'text-rose-400' : log.level === 'warning' ? 'text-amber-400' : log.level === 'info' ? 'text-sky-400' : 'text-slate-500'}`}>
+                    {log.level}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[10px] text-slate-200 break-words">{log.message}</span>
+                    <span className="block text-[9px] text-slate-500 font-mono mt-0.5">
+                      {log.event} · {new Date(log.created_at).toLocaleTimeString()}
+                    </span>
+                  </span>
+                </summary>
+                {Object.keys(log.metadata || {}).length > 0 && (
+                  <pre className="mt-2 p-2 rounded bg-black/30 text-[9px] text-slate-400 whitespace-pre-wrap break-all overflow-x-auto">
+                    {JSON.stringify(log.metadata, null, 2)}
+                  </pre>
+                )}
+              </details>
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   );
 };

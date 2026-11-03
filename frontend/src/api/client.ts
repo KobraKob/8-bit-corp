@@ -6,6 +6,7 @@ import {
   Project,
   Task,
   TaskTreeNode,
+  TaskLogEntry,
   UsageSummary,
   KeyStatus,
 } from './types';
@@ -46,6 +47,7 @@ export const apiClient = {
 
   // Tasks
   getTask: (taskId: string) => request<{ task: Task; messages: any[]; review_notes: string[] }>(`/tasks/${taskId}`),
+  getTaskLogs: (taskId: string, limit = 200) => request<TaskLogEntry[]>(`/tasks/${taskId}/logs?limit=${limit}`),
   cancelTask: (taskId: string) => request<{ success: boolean }>(`/tasks/${taskId}/cancel`, { method: 'POST' }),
   pauseTask: (taskId: string) => request<{ success: boolean }>(`/tasks/${taskId}/pause`, { method: 'POST' }),
   resumeTask: (taskId: string) => request<{ success: boolean }>(`/tasks/${taskId}/resume`, { method: 'POST' }),

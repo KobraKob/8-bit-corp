@@ -1,5 +1,6 @@
 import os
 import time
+import asyncio
 from typing import Any, Callable, Dict, List, Optional, Type, TypeVar
 from pydantic import BaseModel, ValidationError
 
@@ -7,19 +8,14 @@ from app.core.config import get_app_settings
 from app.core.errors import RateLimitExhaustedError
 from app.core.ids import generate_id
 from app.core.logging import logger
-from app.db.models import Agent, LLMCall
+from app.db.models import Agent, LLMCall, TaskLog
 from app.db.session import async_session_factory
 from app.events.event_bus import event_bus
 from app.events.event_types import EventType
 from app.llm.json_repair import extract_and_repair_json
 from app.llm.key_pool import key_pool
 from app.llm.limiter import rate_limiter
-from app.llm.provider import (
-    GenericOpenAICompatProvider,
-    GroqProvider,
-    LLMProvider,
-    MockProvider,
-)
+from app.llm.provider import LLMProvider, ProviderFactory, ProviderRequestError
 from app.llm.types import ChatMessage, ChatRequest, ChatResponse
 
 T = TypeVar("T", bound=BaseModel)
@@ -40,20 +36,12 @@ class LLMRouter:
             self.providers["default"] = self.override_provider
             self.providers["mock"] = self.override_provider
             return
-
-        # Build every configured provider through the shared OpenAI-compatible adapter.
         for name, provider_cfg in self.settings.models.providers.items():
-            if name == "mock":
-                self.providers[name] = MockProvider()
-                continue
             api_key = os.getenv(provider_cfg.api_key_env, "")
-            if name == "groq":
-                self.providers[name] = GroqProvider(base_url=provider_cfg.base_url, api_key=api_key)
-            else:
-                self.providers[name] = GenericOpenAICompatProvider(
-                    base_url=provider_cfg.base_url,
-                    api_key=api_key,
-                )
+            self.providers[name] = ProviderFactory.create(
+                name=name, adapter=provider_cfg.adapter,
+                base_url=provider_cfg.base_url, api_key=api_key,
+            )
 
     def get_provider(self, name: str) -> LLMProvider:
         if self.override_provider:
@@ -98,36 +86,31 @@ class LLMRouter:
 
         last_error = None
 
+        max_retries = max(0, self.settings.settings.llm_max_retries)
+        retry_base = max(0.1, self.settings.settings.llm_retry_base_seconds)
+
         for model_name in models_to_try:
-            # Select key for this agent from the pool
-            if provider_name == "groq":
-                api_key, key_alias = key_pool.select_key_for_agent(
-                    agent_level=agent_level,
-                    dedicated_key=agent_dedicated_key,
-                )
-            else:
-                provider_cfg = self.settings.models.providers[provider_name]
-                api_key = agent_dedicated_key or os.getenv(provider_cfg.api_key_env, "") or "no-key-set"
-                key_alias = f"{provider_name}_agent" if agent_dedicated_key else f"{provider_name}_default"
+            for retry_index in range(max_retries + 1):
+                if provider_name == "groq":
+                    api_key, key_alias = key_pool.select_key_for_agent(
+                        agent_level=agent_level, dedicated_key=agent_dedicated_key,
+                    )
+                else:
+                    provider_cfg = self.settings.models.providers[provider_name]
+                    api_key = agent_dedicated_key or os.getenv(provider_cfg.api_key_env, "") or "no-key-set"
+                    key_alias = f"{provider_name}_agent" if agent_dedicated_key else f"{provider_name}_default"
 
-            # Check rate limiting for this specific key
-            if self.override_provider or provider_name == "mock":
-                acquired = True
-            else:
-                acquired = await rate_limiter.acquire(
-                    model=model_name,
-                    key_alias=key_alias,
-                    estimated_tokens=600,
-                    max_wait_sec=5.0,
-                )
-
-            async with rate_limiter.concurrency_semaphore:
+                acquired = self.override_provider is not None or provider_name == "mock"
                 if not acquired:
-                    logger.warning(f"Rate limiter backed off for key '{key_alias}' on model {model_name}")
+                    acquired = await rate_limiter.acquire(
+                        model=model_name, key_alias=key_alias,
+                        estimated_tokens=600, max_wait_sec=5.0,
+                    )
+                if not acquired:
+                    last_error = f"Local quota unavailable for {key_alias}/{model_name}"
                     await event_bus.emit(
                         event_type=EventType.SYSTEM_RATE_LIMITED,
-                        task_id=task_id,
-                        agent_id=agent_id,
+                        task_id=task_id, agent_id=agent_id,
                         payload={"model": model_name, "tier": tier, "key_alias": key_alias},
                     )
                     continue
@@ -135,60 +118,52 @@ class LLMRouter:
                 call_id = generate_id("llm")
                 start_time = time.monotonic()
                 req = ChatRequest(
-                    model=model_name,
-                    messages=messages,
-                    tools=tools,
-                    priority=priority,
-                    task_id=task_id,
-                    agent_id=agent_id,
-                    api_key=api_key,
-                    key_alias=key_alias,
+                    model=model_name, messages=messages, tools=tools,
+                    priority=priority, task_id=task_id, agent_id=agent_id,
+                    api_key=api_key, key_alias=key_alias,
                 )
-
                 try:
-                    resp = await provider.chat(req)
+                    async with rate_limiter.concurrency_semaphore:
+                        resp = await provider.chat(req)
                     latency = (time.monotonic() - start_time) * 1000.0
-
-                    # Log successful call to DB
                     await self._log_call(
-                        call_id=call_id,
-                        agent_id=agent_id,
-                        task_id=task_id,
-                        provider=provider_name,
-                        model=model_name,
-                        tier=tier,
-                        key_alias=key_alias,
-                        prompt_tokens=resp.usage.prompt_tokens,
+                        call_id=call_id, agent_id=agent_id, task_id=task_id,
+                        provider=provider_name, model=model_name, tier=tier,
+                        key_alias=key_alias, prompt_tokens=resp.usage.prompt_tokens,
                         completion_tokens=resp.usage.completion_tokens,
-                        latency_ms=latency,
-                        status="success",
-                        error=None,
+                        latency_ms=latency, status="success", error=None,
                     )
                     return resp
-
                 except Exception as exc:
                     latency = (time.monotonic() - start_time) * 1000.0
                     last_error = str(exc)
-                    logger.error(f"LLM call failed with key '{key_alias}' on model {model_name}: {exc}")
-
-                    # If 429 rate limit error, put this specific key on cooldown
-                    if "429" in str(exc) or "rate_limit" in str(exc).lower():
-                        key_pool.mark_key_rate_limited(key_alias, cooldown_sec=30.0)
-
+                    provider_error = exc if isinstance(exc, ProviderRequestError) else None
+                    status_code = provider_error.status_code if provider_error else getattr(exc, "status_code", None)
+                    rate_limited = provider_error.rate_limited if provider_error else status_code == 429
+                    retryable = provider_error.retryable if provider_error else (
+                        status_code in (408, 409, 425, 429)
+                        or (isinstance(status_code, int) and status_code >= 500)
+                        or exc.__class__.__name__ in ("APITimeoutError", "APIConnectionError")
+                    )
+                    retry_after = provider_error.retry_after if provider_error else None
+                    logger.error(
+                        f"LLM provider={provider_name} model={model_name} "
+                        f"key={key_alias} status={status_code}: {exc}"
+                    )
+                    if rate_limited:
+                        cooldown = retry_after if retry_after is not None else min(60.0, retry_base * (2 ** retry_index))
+                        key_pool.mark_key_rate_limited(key_alias, cooldown_sec=cooldown)
                     await self._log_call(
-                        call_id=call_id,
-                        agent_id=agent_id,
-                        task_id=task_id,
-                        provider=provider_name,
-                        model=model_name,
-                        tier=tier,
-                        key_alias=key_alias,
-                        prompt_tokens=0,
-                        completion_tokens=0,
-                        latency_ms=latency,
-                        status="error",
+                        call_id=call_id, agent_id=agent_id, task_id=task_id,
+                        provider=provider_name, model=model_name, tier=tier,
+                        key_alias=key_alias, prompt_tokens=0, completion_tokens=0,
+                        latency_ms=latency, status="rate_limited" if rate_limited else "error",
                         error=str(exc),
                     )
+                    if not retryable or retry_index >= max_retries:
+                        break
+                    delay = retry_after if retry_after is not None else min(30.0, retry_base * (2 ** retry_index))
+                    await asyncio.sleep(max(0.0, min(delay, 60.0)))
 
         # If all models/keys exhausted
         raise RateLimitExhaustedError(
@@ -284,6 +259,8 @@ class LLMRouter:
                 cost_estimate=cost_estimate,
             )
             session.add(db_call)
+            if task_id:
+                session.add(TaskLog(id=generate_id('log'), task_id=task_id, level='info' if status == 'success' else 'warning', event='llm.' + status, message=provider + '/' + model + ' ' + status, metadata_json={'tier': tier, 'key_alias': key_alias, 'latency_ms': round(latency_ms, 2), 'error': error}))
             await session.commit()
 
 

@@ -6,6 +6,11 @@ tool_step_cap: 8
 task_token_budget: 25000
 global_concurrency: 2
 wip_limit_per_agent: 1
+task_lease_seconds: 300
+max_delegations_per_task: 1
+max_project_tasks: 100
+llm_max_retries: 2
+llm_retry_base_seconds: 1.0
 approval_gates:
   external_side_effects: true
   hire_dynamic_agents_threshold: 5

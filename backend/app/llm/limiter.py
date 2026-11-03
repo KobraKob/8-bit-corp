@@ -126,16 +126,7 @@ class RateLimiter:
         """Wait for rate limit availability for this specific key within max_wait_sec."""
         bucket_rpm, bucket_tpm = self._ensure_buckets(model, key_alias)
 
-        # Check daily quota first
-        allowed, reason = await self.check_and_increment_daily(model, key_alias, estimated_tokens)
-        if not allowed:
-            logger.warning(reason)
-            await event_bus.emit(
-                event_type=EventType.SYSTEM_QUOTA_EXHAUSTED,
-                payload={"model": model, "key_alias": key_alias, "reason": reason},
-            )
-            return False
-
+        # Do not consume daily quota while waiting for an in-memory token bucket.
         start_time = time.monotonic()
         while time.monotonic() - start_time < max_wait_sec:
             wait_rpm = await bucket_rpm.wait_time_for(1.0)
@@ -147,7 +138,17 @@ class RateLimiter:
                 if consumed_rpm:
                     consumed_tpm = await bucket_tpm.consume(float(estimated_tokens))
                     if consumed_tpm:
-                        return True
+                        allowed, reason = await self.check_and_increment_daily(
+                            model, key_alias, estimated_tokens
+                        )
+                        if allowed:
+                            return True
+                        logger.warning(reason)
+                        await event_bus.emit(
+                            event_type=EventType.SYSTEM_QUOTA_EXHAUSTED,
+                            payload={"model": model, "key_alias": key_alias, "reason": reason},
+                        )
+                        return False
             wait_step = min(max(max_wait, 0.1), 2.0)
             await asyncio.sleep(wait_step)
 

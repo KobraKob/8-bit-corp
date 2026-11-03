@@ -64,6 +64,21 @@ async def _migrate_sqlite_schema(conn) -> None:
     if usage_cols and "key_alias" not in usage_cols:
         await conn.execute(text("ALTER TABLE daily_usage ADD COLUMN key_alias VARCHAR(100) DEFAULT 'default' NOT NULL;"))
 
+    # Persistent execution checkpoints and task leases.
+    res = await conn.execute(text("PRAGMA table_info(tasks);"))
+    task_cols = {r[1] for r in res.fetchall()}
+    if task_cols:
+        if "checkpoint_json" not in task_cols:
+            await conn.execute(text("ALTER TABLE tasks ADD COLUMN checkpoint_json JSON NOT NULL DEFAULT '{}';"))
+        if "lease_token" not in task_cols:
+            await conn.execute(text("ALTER TABLE tasks ADD COLUMN lease_token VARCHAR(64);"))
+        if "lease_expires_at" not in task_cols:
+            await conn.execute(text("ALTER TABLE tasks ADD COLUMN lease_expires_at DATETIME;"))
+        if "next_retry_at" not in task_cols:
+            await conn.execute(text("ALTER TABLE tasks ADD COLUMN next_retry_at DATETIME;"))
+        if "delegation_count" not in task_cols:
+            await conn.execute(text("ALTER TABLE tasks ADD COLUMN delegation_count INTEGER NOT NULL DEFAULT 0;"))
+
 
 async def init_db(engine_override=None) -> None:
     """Initialize database tables and set SQLite WAL mode if applicable."""
