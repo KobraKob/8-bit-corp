@@ -27,6 +27,14 @@ class EventType(str, Enum):
     AGENT_HIRED = "agent.hired"
     AGENT_RETIRED = "agent.retired"
 
+    # Office interactions
+    OFFICE_MEETING_STARTED = "office.meeting.started"
+    OFFICE_MEETING_ENDED = "office.meeting.ended"
+    OFFICE_MEETING_JOINED = "office.meeting.joined"
+    OFFICE_MEETING_LEFT = "office.meeting.left"
+    OFFICE_CONVERSATION = "office.conversation"
+    OFFICE_HANDOFF = "office.handoff"
+
     # Artifacts & Approvals
     ARTIFACT_CREATED = "artifact.created"
     APPROVAL_REQUESTED = "approval.requested"
