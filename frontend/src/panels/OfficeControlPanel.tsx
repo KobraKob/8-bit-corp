@@ -69,7 +69,7 @@ export const OfficeControlPanel: React.FC = () => {
   };
 
   return (
-    <section className="absolute z-20 top-[112px] right-2 w-[min(360px,calc(100%-1rem))] max-h-[calc(100%-132px)] flex flex-col overflow-hidden rounded-xl border border-slate-700/80 bg-slate-950/95 text-slate-100 shadow-2xl backdrop-blur-xl">
+    <section className="absolute z-20 top-[112px] right-2 w-[min(360px,calc(100%_-_1rem))] max-h-[calc(100%_-_132px)] flex flex-col overflow-hidden rounded-xl border border-slate-700/80 bg-slate-950/95 text-slate-100 shadow-2xl backdrop-blur-xl">
       <header className="flex items-center justify-between gap-3 border-b border-slate-800 px-3 py-2.5">
         <div className="flex items-center gap-2 min-w-0">
           <span className="grid h-7 w-7 place-items-center rounded-lg bg-cyan-400/10 text-cyan-300"><Building2 size={15} /></span>
