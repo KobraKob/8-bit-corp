@@ -20,8 +20,8 @@ declare global {
   }
 }
 
-const SKIN_TONES = ['#f2c6a0', '#d99b70', '#a96d4f', '#704634', '#e9b78e'];
-const HAIR_TONES = ['#2d211e', '#493126', '#171b24', '#8a4d2d', '#c1b8a8', '#512d54'];
+const SKIN_TONES = ['var(--pixel-avatar-skin-1)', 'var(--pixel-avatar-skin-2)', 'var(--pixel-avatar-skin-3)', 'var(--pixel-avatar-skin-4)', 'var(--pixel-avatar-skin-5)'];
+const HAIR_TONES = ['var(--pixel-avatar-hair-1)', 'var(--pixel-avatar-hair-2)', 'var(--pixel-avatar-hair-3)', 'var(--pixel-avatar-hair-4)', 'var(--pixel-avatar-hair-5)', 'var(--pixel-avatar-hair-6)'];
 
 function hash(value: string): number {
   let result = 2166136261;
@@ -55,7 +55,7 @@ function AvatarPortrait({ agent, size }: { agent: Agent; size: number }) {
       <path d={hairPaths[(style - 1) % hairPaths.length]} fill={hair} />
       <rect x="15" y="19" width="2" height="2" fill="var(--color-paper-3)" />
       <rect x="24" y="19" width="2" height="2" fill="var(--color-paper-3)" />
-      <path d="M18 25H22" stroke="#633f32" strokeWidth="1.5" />
+      <path d="M18 25H22" stroke="var(--pixel-avatar-line)" strokeWidth="1.5" />
       {beard && <path d="M14 24L16 29L20 31L24 29L27 24L25 27H15Z" fill={hair} />}
       {glasses && <g fill="none" stroke="var(--color-paper-3)" strokeWidth="1.2"><rect x="12.5" y="17" width="7" height="5" rx="1" /><rect x="21" y="17" width="7" height="5" rx="1" /><path d="M19.5 19H21" /></g>}
       {accessory.includes('tie') && <path d="M18 30H22L21 34L20 36L19 34Z" fill="var(--color-accent)" />}
