@@ -131,7 +131,7 @@ async def convene_project_meeting(project_id: str, reason: str = "manual", trigg
                 if task.assignee_agent_id in agent_by_id
                 and agent_by_id[task.assignee_agent_id].department == manager.department
             ]
-            brief = "\\n".join(
+            brief = "\n".join(
                 f"- {task.title}: {task.status}; attempts={task.attempt}; "
                 f"error={task.error or 'none'}; review_notes={'; '.join(task.review_notes_json or [])}"
                 for task in own_tasks[:20]
@@ -146,9 +146,9 @@ async def convene_project_meeting(project_id: str, reason: str = "manual", trigg
                             content=(
                                 f"You are attending a project coordination meeting as {manager.display_name}, "
                                 f"manager of {manager.department}. Review the current evidence and contribute "
-                                f"concrete coordination decisions. Do not invent facts.\\n"
-                                f"Project: {project.name}\\nProject brief: {project.brief[:3000]}\\n"
-                                f"Department work packages:\\n{brief}\\n"
+                                f"concrete coordination decisions. Do not invent facts.\n"
+                                f"Project: {project.name}\nProject brief: {project.brief[:3000]}\n"
+                                f"Department work packages:\n{brief}\n"
                                 "Identify blockers, dependencies on other departments, and specific next actions."
                             ),
                         ),
@@ -197,8 +197,8 @@ async def convene_project_meeting(project_id: str, reason: str = "manual", trigg
                             content=(
                                 f"Chair the coordination meeting for {project.name}. "
                                 "Synthesize only evidence-backed decisions. Each decision needs an accountable department, "
-                                "an action, and a task ID when one exists.\\n"
-                                f"Manager discussion: {discussion}\\n"
+                                "an action, and a task ID when one exists.\n"
+                                f"Manager discussion: {discussion}\n"
                                 f"Existing blocker/revision actions: {decisions}"
                             ),
                         ),
