@@ -125,7 +125,8 @@ export interface EmployeePerformance {
   role_key: string;
   tasks_assigned: number;
   tasks_completed: number;
-  tasks_failed_or_cancelled: number;
+  tasks_failed: number;
+  tasks_cancelled: number;
   revision_count: number;
   completion_rate: number | null;
   reliability_rate: number | null;
