@@ -91,6 +91,18 @@ export const apiClient = {
   deleteKey: (alias: string) =>
     request<{ success: boolean; message: string }>('/keys/' + alias, { method: 'DELETE' }),
 
+  getCompanyMemory: (query = '', projectId?: string) => {
+    const params = new URLSearchParams({ q: query });
+    if (projectId) params.append('project_id', projectId);
+    return request<any[]>('/company/memory?' + params.toString());
+  },
+  saveCompanyMemory: (data: { title: string; body: string; tags?: string; project_id?: string }) =>
+    request<any>('/company/memory', { method: 'POST', body: JSON.stringify(data) }),
+  getEmployeePerformance: () => request<any[]>('/company/employees/performance'),
+  getCompanyMeetings: (projectId?: string) => request<any[]>('/company/meetings' + (projectId ? '?project_id=' + encodeURIComponent(projectId) : '')),
+  conveneCompanyMeeting: (projectId: string) =>
+    request<any>('/company/meetings', { method: 'POST', body: JSON.stringify({ project_id: projectId, reason: 'manual' }) }),
+
   getEvents: (after = 0, projectId?: string) => {
     const params = new URLSearchParams({ after: String(after) });
     if (projectId) params.append('project_id', projectId);
