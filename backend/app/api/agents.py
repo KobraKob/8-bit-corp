@@ -8,7 +8,6 @@ from app.db.session import async_session_factory
 from app.domain.org_model import hire_dynamic_agent
 from app.events.event_bus import event_bus
 from app.events.event_types import EventType
-from app.db.session import async_session_factory
 from app.workspace.workspace_manager import workspace_manager
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
