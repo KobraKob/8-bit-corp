@@ -360,7 +360,13 @@ export class OfficeScene extends Phaser.Scene {
         const room = String(event.payload?.room || 'Boardroom');
         const bounds = this.layout.rooms.find((item) => item.name === room)?.bounds;
         if (bounds) this.walkAgentTo(event.agent_id, Math.floor(bounds.x + bounds.width / 2), Math.floor(bounds.y + bounds.height / 2), () => this.setAgentState(event.agent_id!, 'in_meeting'));
-      } else if ((event.type === 'office.meeting.ended' || event.type === 'office.meeting.left') && event.agent_id) {
+      } else if (event.type === 'office.meeting.ended') {
+        for (const [participantId, participant] of this.agentSprites) {
+          if (participant.state === 'in_meeting' && participant.desk) {
+            this.walkAgentTo(participantId, participant.desk.tileX, participant.desk.tileY);
+          }
+        }
+      } else if (event.type === 'office.meeting.left' && event.agent_id) {
         const desk = this.agentSprites.get(event.agent_id)?.desk;
         if (desk) this.walkAgentTo(event.agent_id, desk.tileX, desk.tileY);
       } else if (event.type === 'office.conversation' && event.agent_id) {
