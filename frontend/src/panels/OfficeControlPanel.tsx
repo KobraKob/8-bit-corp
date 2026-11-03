@@ -36,6 +36,7 @@ export const OfficeControlPanel: React.FC = () => {
   const chronologicalEvents = React.useMemo(() => [...events].sort((a, b) => a.id - b.id), [events]);
   const selectedEvent = chronologicalEvents[timelineIndex];
   const meetingActive = events.find((event) => (event.payload?.room || 'Boardroom') === (selectedRoom || 'Boardroom') && ['office.meeting.started', 'office.meeting.ended'].includes(event.type))?.type === 'office.meeting.started';
+  const recentConversations = events.filter((event) => event.type === 'office.conversation').slice(0, 5);
 
   React.useEffect(() => {
     if (!actorId && employees[0]) setActorId(employees[0].id);
@@ -119,6 +120,10 @@ export const OfficeControlPanel: React.FC = () => {
               <div className="flex gap-2">
                 <input value={message} onChange={(e) => setMessage(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && message.trim()) void act('message', { target_agent_id: targetId, message: message.trim() }); }} placeholder="Send a message…" className="min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-900 px-2.5 py-2 text-xs outline-none focus:border-cyan-500" />
                 <button disabled={busy || !message.trim() || !targetId} onClick={() => void act('message', { target_agent_id: targetId, message: message.trim() })} className="rounded-lg bg-cyan-500 px-3 text-slate-950 disabled:opacity-40"><Send size={14} /></button>
+              </div>
+              <div className="mt-3 space-y-1.5">
+                <div className="text-[10px] uppercase tracking-wider text-slate-500">Recent conversations</div>
+                {recentConversations.length ? recentConversations.map((event) => <div key={event.id} className="rounded-md bg-slate-900/80 px-2.5 py-2 text-[10px] text-slate-300"><span className="text-cyan-300">{event.payload?.from_name || 'Employee'}</span><span className="text-slate-500"> → {event.payload?.to_name || 'Employee'}</span><div className="mt-1 text-slate-400">{String(event.payload?.text || '')}</div></div>) : <div className="text-[10px] text-slate-600">No messages yet.</div>}
               </div>
             </div>
           </div>
