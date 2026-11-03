@@ -14,6 +14,8 @@ interface AppState {
   projects: Project[];
   activeProjectId: string | null;
   taskTree: TaskTreeNode[];
+  taskTreeCache: Record<string, TaskTreeNode[]>;
+  taskTreeSyncedAt: Record<string, string>;
   agents: Agent[];
   selectedAgentId: string | null;
   selectedTaskId: string | null;
@@ -63,6 +65,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   projects: [],
   activeProjectId: null,
   taskTree: [],
+  taskTreeCache: {},
+  taskTreeSyncedAt: {},
   agents: [],
   selectedAgentId: null,
   selectedTaskId: null,
@@ -124,14 +128,16 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ isDrawerOpen: true });
       return;
     }
+    const cachedTree = get().taskTreeCache[id] || [];
     set({
       activeProjectId: id,
-      taskTree: [],
-      taskTreeLoading: true,
+      taskTree: cachedTree,
+      taskTreeLoading: cachedTree.length === 0,
       taskTreeError: null,
-      taskTreeUpdatedAt: null,
+      taskTreeUpdatedAt: get().taskTreeSyncedAt[id] || null,
       selectedTaskId: null,
       selectedArtifact: null,
+      isDrawerOpen: true,
     });
     await get().fetchTaskTree();
   },
@@ -142,18 +148,22 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ taskTree: [], taskTreeLoading: false, taskTreeError: null });
       return;
     }
-    const hasSnapshot = get().taskTree.length > 0;
+    const hasSnapshot = get().taskTree.length > 0 || Boolean(get().taskTreeCache[projectId]?.length);
     set({ taskTreeLoading: !hasSnapshot, taskTreeError: null });
     try {
       const tree = await apiClient.getProjectTree(projectId);
-      if (get().activeProjectId !== projectId) return;
-      set({
-        taskTree: tree,
-        taskTreeLoading: false,
-        taskTreeError: null,
-        taskTreeUpdatedAt: new Date().toISOString(),
-        networkStatus: 'online',
-      });
+      const syncedAt = new Date().toISOString();
+      set((state) => ({
+        taskTreeCache: { ...state.taskTreeCache, [projectId]: tree },
+        taskTreeSyncedAt: { ...state.taskTreeSyncedAt, [projectId]: syncedAt },
+        ...(state.activeProjectId === projectId ? {
+          taskTree: tree,
+          taskTreeLoading: false,
+          taskTreeError: null,
+          taskTreeUpdatedAt: syncedAt,
+          networkStatus: 'online' as const,
+        } : {}),
+      }));
     } catch (error) {
       if (get().activeProjectId !== projectId) return;
       set({
