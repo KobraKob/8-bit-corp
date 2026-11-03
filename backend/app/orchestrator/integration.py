@@ -1,7 +1,7 @@
 from sqlalchemy import select, update
 
 from app.core.logging import logger
-from app.db.models import Artifact, Task
+from app.db.models import Artifact, Project, Task
 from app.db.session import async_session_factory
 from app.domain.task_fsm import TaskStatus
 from app.events.event_bus import event_bus
@@ -104,6 +104,12 @@ class IntegrationEngine:
             if parent_parent_id:
                 await IntegrationEngine.integrate_parent_task(parent_parent_id)
             else:
+                async with async_session_factory() as session:
+                    project = await session.get(Project, project_id)
+                    if project and project.status not in ("stopped", "paused"):
+                        project.status = "completed"
+                        await session.commit()
+                await event_bus.emit(event_type=EventType.PROJECT_COMPLETED, project_id=project_id, task_id=parent_id, agent_id=assignee_id, payload={"status": "completed"})
                 logger.info("Root project integration approved for %s", project_id)
         except Exception:
             async with async_session_factory() as session:

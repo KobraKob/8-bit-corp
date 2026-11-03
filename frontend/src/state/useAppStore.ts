@@ -20,7 +20,8 @@ export type ActiveDrawerTab =
   | 'approvals'
   | 'org'
   | 'events'
-  | 'keys';
+  | 'keys'
+  | 'projects';
 
 interface AppState {
   projects: Project[];
@@ -42,6 +43,7 @@ interface AppState {
   // Actions
   fetchProjects: () => Promise<void>;
   setActiveProject: (id: string) => Promise<void>;
+  clearActiveProject: () => void;
   fetchTaskTree: () => Promise<void>;
   fetchAgents: () => Promise<void>;
   fetchApprovals: () => Promise<void>;
@@ -83,6 +85,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       console.error('Failed to load projects', e);
     }
   },
+
+  clearActiveProject: () => set({ activeProjectId: null, taskTree: [], selectedTaskId: null, selectedArtifact: null }),
 
   setActiveProject: async (id: string) => {
     set({ activeProjectId: id });

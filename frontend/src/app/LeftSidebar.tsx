@@ -4,7 +4,7 @@ import { apiClient } from '../api/client';
 import { Briefcase, Plus, Send, Building2, CheckCircle2 } from 'lucide-react';
 
 export const LeftSidebar: React.FC<{ onOpenIntake: () => void }> = ({ onOpenIntake }) => {
-  const { projects, activeProjectId, setActiveProject, fetchTaskTree } = useAppStore();
+  const { projects, activeProjectId, setActiveProject, fetchTaskTree, setActiveDrawerTab } = useAppStore();
   const [quickTitle, setQuickTitle] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -48,7 +48,10 @@ export const LeftSidebar: React.FC<{ onOpenIntake: () => void }> = ({ onOpenInta
       {/* Projects List */}
       <div className="flex-1 overflow-y-auto p-3 flex flex-col space-y-3">
         <div className="flex items-center justify-between">
-          <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Client Projects</span>
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Client Projects</span>
+            <button onClick={() => setActiveDrawerTab('projects')} className="text-[10px] text-sky-400 hover:text-sky-300">Manage</button>
+          </div>
           <button
             onClick={onOpenIntake}
             className="p-1 rounded bg-sky-600/20 hover:bg-sky-600/30 text-sky-400 border border-sky-500/30 transition-all"
