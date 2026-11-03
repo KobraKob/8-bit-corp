@@ -144,6 +144,8 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   handleIncomingEvent: (evt: EventPayload) => {
     set((state) => {
+      // Resume replay and live delivery can overlap; event IDs are globally monotonic.
+      if (evt.id && evt.id <= state.lastEventId) return state;
       const newEvents = [evt, ...state.events].slice(0, 500);
       const nextLastId = Math.max(state.lastEventId, evt.id || 0);
       return { events: newEvents, lastEventId: nextLastId };
