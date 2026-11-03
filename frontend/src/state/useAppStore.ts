@@ -17,13 +17,27 @@ interface AppState {
   taskTreeCache: Record<string, TaskTreeNode[]>;
   taskTreeSyncedAt: Record<string, string>;
   agents: Agent[];
+  agentsLoading: boolean;
+  agentsError: string | null;
+  agentsRequestInFlight: boolean;
   selectedAgentId: string | null;
   selectedTaskId: string | null;
   selectedArtifact: Artifact | null;
   approvals: Approval[];
+  approvalsLoading: boolean;
+  approvalsError: string | null;
+  approvalsRequestInFlight: boolean;
   events: EventPayload[];
+  eventsLoading: boolean;
+  eventsError: string | null;
+  eventsRequestInFlight: boolean;
   usage: UsageSummary | null;
+  usageError: string | null;
+  usageRequestInFlight: boolean;
   keyStatuses: KeyStatus[];
+  keysLoading: boolean;
+  keysError: string | null;
+  keysRequestInFlight: boolean;
   activeDrawerTab: ActiveDrawerTab;
   isDrawerOpen: boolean;
   isPaused: boolean;
@@ -42,6 +56,7 @@ interface AppState {
   clearActiveProject: () => void;
   fetchTaskTree: () => Promise<void>;
   fetchAgents: () => Promise<void>;
+  fetchEvents: () => Promise<void>;
   fetchApprovals: () => Promise<void>;
   fetchUsage: () => Promise<void>;
   fetchKeys: () => Promise<void>;
@@ -70,13 +85,27 @@ export const useAppStore = create<AppState>((set, get) => ({
   taskTreeCache: {},
   taskTreeSyncedAt: {},
   agents: [],
+  agentsLoading: false,
+  agentsError: null,
+  agentsRequestInFlight: false,
   selectedAgentId: null,
   selectedTaskId: null,
   selectedArtifact: null,
   approvals: [],
+  approvalsLoading: false,
+  approvalsError: null,
+  approvalsRequestInFlight: false,
   events: [],
+  eventsLoading: false,
+  eventsError: null,
+  eventsRequestInFlight: false,
   usage: null,
+  usageError: null,
+  usageRequestInFlight: false,
   keyStatuses: [],
+  keysLoading: false,
+  keysError: null,
+  keysRequestInFlight: false,
   activeDrawerTab: 'tree',
   isDrawerOpen: true,
   isPaused: false,
@@ -187,37 +216,104 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
-  fetchAgents: async () => {
+  fetchEvents: async () => {
+    if (get().eventsRequestInFlight) return;
+    set({ eventsRequestInFlight: true, eventsLoading: get().events.length === 0, eventsError: null });
     try {
-      set({ agents: await apiClient.getAgents() });
+      const latestId = get().lastEventId;
+      const incoming = await apiClient.getEvents(latestId);
+      set((state) => {
+        const known = new Set(state.events.map((event) => event.id));
+        const fresh = incoming.filter((event) => !known.has(event.id));
+        return {
+          events: [...fresh.reverse(), ...state.events].slice(0, 500),
+          lastEventId: Math.max(state.lastEventId, ...incoming.map((event) => event.id), 0),
+          eventsLoading: false,
+          eventsRequestInFlight: false,
+          eventsError: null,
+        };
+      });
     } catch (error) {
-      set({ networkStatus: typeof navigator !== 'undefined' && !navigator.onLine ? 'offline' : 'degraded' });
-      console.warn('Agent roster unavailable; retaining the last successful roster.', error);
+      set({
+        eventsLoading: false,
+        eventsRequestInFlight: false,
+        eventsError: errorMessage(error),
+        networkStatus: typeof navigator !== 'undefined' && !navigator.onLine ? 'offline' : 'degraded',
+      });
+    }
+  },
+
+  fetchAgents: async () => {
+    if (get().agentsRequestInFlight) return;
+    set({ agentsRequestInFlight: true, agentsLoading: get().agents.length === 0, agentsError: null });
+    try {
+      set({
+        agents: await apiClient.getAgents(),
+        agentsLoading: false,
+        agentsRequestInFlight: false,
+        agentsError: null,
+      });
+    } catch (error) {
+      set({
+        agentsLoading: false,
+        agentsRequestInFlight: false,
+        agentsError: errorMessage(error),
+        networkStatus: typeof navigator !== 'undefined' && !navigator.onLine ? 'offline' : 'degraded',
+      });
     }
   },
 
   fetchApprovals: async () => {
+    if (get().approvalsRequestInFlight) return;
+    set({ approvalsRequestInFlight: true, approvalsLoading: get().approvals.length === 0, approvalsError: null });
     try {
-      set({ approvals: await apiClient.getApprovals() });
+      set({
+        approvals: await apiClient.getApprovals(),
+        approvalsLoading: false,
+        approvalsRequestInFlight: false,
+        approvalsError: null,
+      });
     } catch (error) {
-      set({ networkStatus: typeof navigator !== 'undefined' && !navigator.onLine ? 'offline' : 'degraded' });
-      console.warn('Approvals unavailable; retaining the last successful list.', error);
+      set({
+        approvalsLoading: false,
+        approvalsRequestInFlight: false,
+        approvalsError: errorMessage(error),
+        networkStatus: typeof navigator !== 'undefined' && !navigator.onLine ? 'offline' : 'degraded',
+      });
     }
   },
 
   fetchUsage: async () => {
+    if (get().usageRequestInFlight) return;
+    set({ usageRequestInFlight: true, usageError: null });
     try {
-      set({ usage: await apiClient.getUsage() });
+      set({ usage: await apiClient.getUsage(), usageRequestInFlight: false, usageError: null });
     } catch (error) {
-      set({ networkStatus: typeof navigator !== 'undefined' && !navigator.onLine ? 'offline' : 'degraded' });
+      set({
+        usageRequestInFlight: false,
+        usageError: errorMessage(error),
+        networkStatus: typeof navigator !== 'undefined' && !navigator.onLine ? 'offline' : 'degraded',
+      });
     }
   },
 
   fetchKeys: async () => {
+    if (get().keysRequestInFlight) return;
+    set({ keysRequestInFlight: true, keysLoading: get().keyStatuses.length === 0, keysError: null });
     try {
-      set({ keyStatuses: await apiClient.getKeys() });
+      set({
+        keyStatuses: await apiClient.getKeys(),
+        keysLoading: false,
+        keysRequestInFlight: false,
+        keysError: null,
+      });
     } catch (error) {
-      set({ networkStatus: typeof navigator !== 'undefined' && !navigator.onLine ? 'offline' : 'degraded' });
+      set({
+        keysLoading: false,
+        keysRequestInFlight: false,
+        keysError: errorMessage(error),
+        networkStatus: typeof navigator !== 'undefined' && !navigator.onLine ? 'offline' : 'degraded',
+      });
     }
   },
 
