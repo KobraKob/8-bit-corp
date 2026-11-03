@@ -21,7 +21,8 @@ async def get_employee_performance():
     for agent in agents:
         assigned = by_agent.get(agent.id, [])
         completed = [task for task in assigned if task.status == "done"]
-        failed = [task for task in assigned if task.status in ("failed", "cancelled")]
+        failed = [task for task in assigned if task.status == "failed"]
+        cancelled = [task for task in assigned if task.status == "cancelled"]
         revised = [task for task in assigned if max(0, int(task.attempt or 0)) > 0 or bool(task.review_notes_json)]
         durations = []
         for task in completed:
@@ -39,11 +40,12 @@ async def get_employee_performance():
             "status": agent.status,
             "tasks_assigned": total,
             "tasks_completed": completed_count,
-            "tasks_failed_or_cancelled": len(failed),
+            "tasks_failed": len(failed),
+            "tasks_cancelled": len(cancelled),
             "revision_count": sum(max(0, int(task.attempt or 0)) for task in assigned),
             "tasks_revised": len(revised),
             "completion_rate": round(completed_count / total, 3) if total else None,
-            "reliability_rate": round((total - len(failed)) / total, 3) if total else None,
+            "reliability_rate": round(completed_count / (completed_count + len(failed)), 3) if completed_count + len(failed) else None,
             "average_completion_seconds": round(sum(durations) / len(durations), 1) if durations else None,
             "average_quality_score": round(completed_count / max(1, completed_count + len(revised)), 3) if total else None,
             "quality_score_note": "Proxy: completed tasks divided by completed tasks plus tasks with revision evidence; not an LLM quality judgment.",
