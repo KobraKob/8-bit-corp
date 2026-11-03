@@ -39,55 +39,90 @@ def build_default_sprite(role: RoleDef, index: int = 0) -> Dict[str, any]:
     }
 
 
+def validate_org_config(org_config: OrgConfig) -> None:
+    """Reject invalid reporting graphs before writing any employee records."""
+    if not org_config.roles:
+        raise ValueError("Organization config must define at least one role.")
+
+    for role_key, role in org_config.roles.items():
+        if role.count < 1:
+            raise ValueError(f"Role '{role_key}' must have count >= 1.")
+        if role.reports_to and role.reports_to not in org_config.roles:
+            raise ValueError(f"Role '{role_key}' reports to unknown role '{role.reports_to}'.")
+        if role.reports_to == role_key:
+            raise ValueError(f"Role '{role_key}' cannot report to itself.")
+
+    # Detect cycles in the role-level reporting graph.
+    for role_key in org_config.roles:
+        visited = set()
+        current = role_key
+        while current:
+            if current in visited:
+                raise ValueError(f"Reporting cycle detected at role '{current}'.")
+            visited.add(current)
+            current_role = org_config.roles.get(current)
+            current = current_role.reports_to if current_role else None
+
+
 async def seed_organization_from_config(org_config: Optional[OrgConfig] = None) -> None:
-    """Seed agents from org.yaml into the DB if the agents table is empty."""
+    """Ensure configured employees exist and their reporting relationships are wired."""
     if org_config is None:
         org_config = get_app_settings().org
+    validate_org_config(org_config)
 
     async with async_session_factory() as session:
         result = await session.execute(select(Agent))
         existing_agents = result.scalars().all()
-        if existing_agents:
-            logger.info("Organization already seeded, skipping initial seed.")
-            return
+        active_by_role: Dict[str, List[Agent]] = {}
+        for agent in existing_agents:
+            if agent.status == "active":
+                active_by_role.setdefault(agent.role_key, []).append(agent)
 
-        logger.info("Seeding organization from configuration...")
-        created_agents: Dict[str, Agent] = {}
+        created_agents: Dict[str, List[Agent]] = {
+            role_key: list(active_by_role.get(role_key, []))
+            for role_key in org_config.roles
+        }
+        expected_count = sum(role.count for role in org_config.roles.values())
 
-        # 1. First pass: create all agents
+        # Reconcile missing configured employees without deleting custom or retired agents.
         for role_key, role in org_config.roles.items():
-            for i in range(role.count):
+            employees = created_agents[role_key]
+            for index in range(len(employees), role.count):
                 agent_id = generate_id("agt")
-                sprite = build_default_sprite(role, i)
-                name = role.title if role.count == 1 else f"{role.title} {i + 1}"
                 db_agent = Agent(
                     id=agent_id,
                     role_key=role.key,
-                    display_name=name,
+                    display_name=role.title if role.count == 1 else f"{role.title} {index + 1}",
                     department=role.department,
                     level=role.level,
                     model_tier=role.tier,
                     system_prompt=role.prompt.strip(),
                     tools_json=role.tools,
                     status="active",
-                    sprite_json=sprite,
+                    sprite_json=build_default_sprite(role, index),
                 )
                 session.add(db_agent)
-                # Map by role_key for reporting structure
-                created_agents[role_key] = db_agent
+                employees.append(db_agent)
 
         await session.flush()
 
-        # 2. Second pass: wire reports_to relationships
+        # Every employee in a role reports to the first configured manager in that role.
         for role_key, role in org_config.roles.items():
-            if role.reports_to and role.reports_to in created_agents:
-                manager_agent = created_agents[role.reports_to]
-                subordinate_agent = created_agents.get(role_key)
-                if subordinate_agent:
-                    subordinate_agent.reports_to_agent_id = manager_agent.id
+            if not role.reports_to:
+                continue
+            manager_candidates = created_agents.get(role.reports_to, [])
+            if not manager_candidates:
+                raise ValueError(f"No active manager exists for role '{role.reports_to}'.")
+            manager_id = manager_candidates[0].id
+            for subordinate in created_agents[role_key]:
+                subordinate.reports_to_agent_id = manager_id
 
         await session.commit()
-        logger.info(f"Successfully seeded {len(created_agents)} corporate agents.")
+        actual_count = sum(len(employees) for employees in created_agents.values())
+        logger.info(
+            f"Organization reconciled: {actual_count}/{expected_count} configured active employees "
+            f"across {len(created_agents)} roles."
+        )
 
 
 async def hire_dynamic_agent(
