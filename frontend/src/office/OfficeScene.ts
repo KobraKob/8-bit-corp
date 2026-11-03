@@ -159,7 +159,10 @@ export class OfficeScene extends Phaser.Scene {
         shirt,
         agent.sprite_json?.skin_tone || 2,
         agent.level,
-        isCeo
+        isCeo,
+        agent.sprite_json?.hair_style || 1,
+        agent.sprite_json?.accessory || 'id_badge',
+        agent.id
       );
 
       const container = this.add.container(spawnX, spawnY).setDepth(10);
@@ -168,7 +171,7 @@ export class OfficeScene extends Phaser.Scene {
 
       // Name tag over agent
       const nameTag = this.add
-        .text(0, -12, agent.display_name.split(' ')[0], {
+        .text(0, -18, agent.display_name.split(' ')[0], {
           fontSize: '7px',
           fontFamily: 'monospace',
           color: '#ffffff',
