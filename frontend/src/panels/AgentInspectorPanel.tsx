@@ -5,7 +5,7 @@ import { AgentAvatar } from '../components/AgentAvatar';
 import { Shield, Sparkles, Terminal, UserX, Save, Check, Key, ShieldCheck, Trash2 } from 'lucide-react';
 
 export const AgentInspectorPanel: React.FC = () => {
-  const { selectedAgentId, agents, fetchAgents } = useAppStore();
+  const { selectedAgentId, agents, fetchAgents, networkStatus } = useAppStore();
   const agent = agents.find((a) => a.id === selectedAgentId);
 
   const [prompt, setPrompt] = useState(agent?.system_prompt || '');
@@ -201,7 +201,7 @@ export const AgentInspectorPanel: React.FC = () => {
       <div className="flex items-center justify-between pt-2">
         <button
           onClick={handleRetire}
-          disabled={agent.status === 'retired'}
+          disabled={agent.status === 'retired' || networkStatus === 'offline'}
           className="px-3 py-1.5 rounded border border-rose-900/50 text-rose-400 hover:bg-rose-950/30 flex items-center gap-1.5 transition-colors text-xs"
         >
           <UserX size={13} /> Retire
@@ -209,7 +209,7 @@ export const AgentInspectorPanel: React.FC = () => {
 
         <button
           onClick={handleSave}
-          disabled={isSaving}
+          disabled={isSaving || networkStatus === 'offline'}
           className="px-4 py-1.5 rounded bg-sky-600 hover:bg-sky-500 text-white font-medium flex items-center gap-1.5 transition-all text-xs shadow-sm"
         >
           {isSaved ? <Check size={13} className="text-emerald-300" /> : <Save size={13} />}
