@@ -1,5 +1,5 @@
 import {
-  Agent, Approval, Artifact, EventPayload, Project, Task, TaskTreeNode, UsageSummary, KeyStatus,
+  Agent, Approval, Artifact, EventPayload, Project, Task, TaskTreeNode, UsageSummary, KeyStatus, CompanyMemory, EmployeePerformance, CompanyMeeting,
 } from './types';
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api').replace(/\/+$/, '');
@@ -90,6 +90,18 @@ export const apiClient = {
     request<KeyStatus>('/keys', { method: 'POST', body: JSON.stringify(data) }),
   deleteKey: (alias: string) =>
     request<{ success: boolean; message: string }>('/keys/' + alias, { method: 'DELETE' }),
+
+  getCompanyMemory: (query = '', projectId?: string) => {
+    const params = new URLSearchParams({ q: query });
+    if (projectId) params.append('project_id', projectId);
+    return request<CompanyMemory[]>('/company/memory?' + params.toString());
+  },
+  saveCompanyMemory: (data: { title: string; body: string; tags?: string; project_id?: string }) =>
+    request<CompanyMemory>('/company/memory', { method: 'POST', body: JSON.stringify(data) }),
+  getEmployeePerformance: () => request<EmployeePerformance[]>('/company/employees/performance'),
+  getCompanyMeetings: (projectId?: string) => request<CompanyMeeting[]>('/company/meetings' + (projectId ? '?project_id=' + encodeURIComponent(projectId) : '')),
+  conveneCompanyMeeting: (projectId: string) =>
+    request<CompanyMeeting>('/company/meetings', { method: 'POST', body: JSON.stringify({ project_id: projectId, reason: 'manual' }) }),
 
   getEvents: (after = 0, projectId?: string) => {
     const params = new URLSearchParams({ after: String(after) });

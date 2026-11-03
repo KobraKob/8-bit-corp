@@ -16,6 +16,7 @@ from app.orchestrator.delegation import DelegationEngine
 from app.orchestrator.integration import IntegrationEngine
 from app.orchestrator.review import ReviewEngine
 from app.orchestrator.triage import CEOTriage
+from app.orchestrator.meeting_service import convene_project_meeting
 
 
 class Scheduler:
@@ -225,6 +226,12 @@ class Scheduler:
                     creator_agent_id=task.assignee_agent_id,
                     subtasks_data=subtask_dicts,
                 )
+                # Cross-department projects convene managers once their
+                # initial work breakdown is available.
+                try:
+                    await convene_project_meeting(task.project_id, reason="automatic")
+                except Exception as meeting_exc:
+                    logger.warning(f"Could not convene project coordination meeting: {meeting_exc}")
                 return
 
             # Recovered manager tasks with existing children should resume integration,
@@ -312,6 +319,17 @@ class Scheduler:
                         agent_id=task.assignee_agent_id,
                         payload={"reason": args.get("reason", "Worker reported blocked")},
                     )
+
+                    # A blocked work package is a coordination trigger. The
+                    # meeting service de-duplicates by project and trigger task.
+                    try:
+                        await convene_project_meeting(
+                            task.project_id,
+                            reason="automatic",
+                            trigger_task_id=task.id,
+                        )
+                    except Exception as meeting_exc:
+                        logger.warning(f"Could not convene blocker meeting for {task.id}: {meeting_exc}")
 
         except Exception as exc:
             logger.error(f"Error processing task {task_id}: {exc}", exc_info=True)

@@ -38,6 +38,9 @@ class EventType(str, Enum):
     SYSTEM_RESUMED = "system.resumed"
     PROJECT_COMPLETED = "project.completed"
 
+    # Company intelligence
+    COMPANY_MEETING_COMPLETED = "company.meeting_completed"
+
 
 class EventPayload(BaseModel):
     id: Optional[int] = None

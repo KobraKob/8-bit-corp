@@ -184,6 +184,23 @@ class WikiNote(Base):
     updated_at = Column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
 
 
+class CompanyMeeting(Base):
+    __tablename__ = "company_meetings"
+
+    id = Column(String(36), primary_key=True)
+    project_id = Column(String(36), ForeignKey("projects.id"), nullable=False, index=True)
+    title = Column(String(255), nullable=False)
+    trigger = Column(String(100), default="manual", nullable=False)
+    trigger_task_id = Column(String(36), ForeignKey("tasks.id"), nullable=True, index=True)
+    status = Column(String(50), default="completed", nullable=False)
+    attendees_json = Column(JSON, default=list, nullable=False)
+    agenda_json = Column(JSON, default=list, nullable=False)
+    discussion_json = Column(JSON, default=list, nullable=False)
+    decisions_json = Column(JSON, default=list, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+
+
 class DailyUsage(Base):
     __tablename__ = "daily_usage"
 

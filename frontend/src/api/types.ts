@@ -109,6 +109,46 @@ export interface EventPayload {
   payload: Record<string, any>;
 }
 
+export interface CompanyMemory {
+  id: string;
+  project_id?: string | null;
+  title: string;
+  body: string;
+  tags: string;
+  updated_at: string;
+}
+
+export interface EmployeePerformance {
+  agent_id: string;
+  display_name: string;
+  department: string;
+  role_key: string;
+  tasks_assigned: number;
+  tasks_completed: number;
+  tasks_failed: number;
+  tasks_cancelled: number;
+  revision_count: number;
+  completion_rate: number | null;
+  reliability_rate: number | null;
+  average_completion_seconds: number | null;
+  average_quality_score: number | null;
+  quality_score_note: string;
+}
+
+export interface CompanyMeeting {
+  id: string;
+  project_id: string;
+  title: string;
+  trigger: string;
+  status: string;
+  attendees: Array<{ agent_id: string; name: string; department: string; role: string }>;
+  agenda: string[];
+  discussion: Array<Record<string, any>>;
+  decisions: Array<Record<string, any>>;
+  created_at: string;
+  completed_at?: string | null;
+}
+
 export interface UsageSummary {
   total_calls: number;
   total_prompt_tokens: number;

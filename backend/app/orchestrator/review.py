@@ -13,6 +13,8 @@ from app.events.event_types import EventType
 from app.llm.router import llm_router
 from app.llm.types import ChatMessage
 from app.workspace.workspace_manager import workspace_manager
+from app.orchestrator.company_memory import save_memory
+from app.orchestrator.meeting_service import convene_project_meeting
 
 
 class CriterionEvaluation(BaseModel):
@@ -186,6 +188,26 @@ class ReviewEngine:
 
             await session.commit()
 
+        # Persist formal review outcomes as project memory so later tasks
+        # can reuse client decisions, quality expectations and revision lessons.
+        if decision in ("approve", "revise", "escalate"):
+            evaluations = "\\n".join(
+                f"- {item.criterion}: {'PASS' if item.passed else 'FAIL'} — {item.notes}"
+                for item in report.criteria_evaluations
+            )
+            revision_text = "\\n".join(f"- {item}" for item in report.required_revisions)
+            await save_memory(
+                title=f"Review decision — {task.title}",
+                body=(
+                    f"Decision: {decision}\\nSummary: {report.summary}\\n"
+                    f"Acceptance review:\\n{evaluations}\\n"
+                    f"Required revisions:\\n{revision_text}"
+                ),
+                tags="review-decision, acceptance-criteria, quality-history",
+                project_id=task.project_id,
+                created_by_agent_id=reviewer.id,
+            )
+
         # Emit events after session is committed to prevent SQLite lockups
         for evt_type, proj_id, t_id, agt_id, payload in events_to_emit:
             await event_bus.emit(
@@ -195,5 +217,16 @@ class ReviewEngine:
                 agent_id=agt_id,
                 payload=payload,
             )
+
+        # A blocked/escalated review requires manager coordination.
+        if decision in ("escalate",) or any(evt[0] == EventType.TASK_BLOCKED for evt in events_to_emit):
+            try:
+                await convene_project_meeting(
+                    task.project_id,
+                    reason="automatic",
+                    trigger_task_id=task.id,
+                )
+            except Exception as meeting_exc:
+                logger.warning(f"Could not convene review escalation meeting: {meeting_exc}")
 
         return report

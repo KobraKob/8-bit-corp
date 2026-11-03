@@ -76,7 +76,17 @@ class ContextBuilder:
             )
             w_res = await session.execute(wiki_stmt)
             wiki_notes = w_res.scalars().all()
-            wiki_lines = [f"- {w.title}: {w.body[:150]}" for w in wiki_notes[:3]]
+            # Rank shared and project knowledge by overlap with this task.
+            terms = set((self.task.title + " " + self.task.description + " " + self.task.original_goal).lower().split())
+            ranked_notes = sorted(
+                wiki_notes,
+                key=lambda note: (
+                    sum(1 for term in terms if len(term) > 3 and term in (note.title + " " + note.body + " " + note.tags).lower()),
+                    note.updated_at,
+                ),
+                reverse=True,
+            )
+            wiki_lines = [f"- [{w.tags or 'knowledge'}] {w.title}: {w.body[:600]}" for w in ranked_notes[:8]]
 
         # 3. Assemble User Task Prompt
         criteria_list = "\n".join(f"  [{i+1}] {c}" for i, c in enumerate(self.task.acceptance_criteria_json))
@@ -98,7 +108,7 @@ class ContextBuilder:
             f"Acceptance Criteria:\n{criteria_list}\n\n"
             f"=== ANCESTOR OBJECTIVES ===\n{ancestor_block}\n\n"
             f"=== DEPENDENCY DELIVERABLES ===\n{dep_block}\n\n"
-            f"=== SHARED KNOWLEDGE (WIKI) ===\n{wiki_block}"
+            f"=== COMPANY MEMORY (CLIENT REQUIREMENTS, DECISIONS, RESEARCH, PROJECT KNOWLEDGE) ===\n{wiki_block}"
             f"{review_notes_block}\n\n"
             f"Execute your role and produce concrete deliverables."
         )
