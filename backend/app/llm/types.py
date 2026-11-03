@@ -32,6 +32,8 @@ class ChatRequest(BaseModel):
     priority: int = 5  # 1 (highest/CEO/review) to 10 (lowest)
     task_id: Optional[str] = None
     agent_id: Optional[str] = None
+    api_key: Optional[str] = None
+    key_alias: Optional[str] = "default"
 
 
 class ChatResponse(BaseModel):

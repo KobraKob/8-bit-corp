@@ -210,10 +210,19 @@ class GenericOpenAICompatProvider:
     """Provider for OpenAI-compatible REST APIs (e.g., Groq, vLLM, Ollama, OpenAI)."""
 
     def __init__(self, base_url: str, api_key: str) -> None:
-        self.client = AsyncOpenAI(base_url=base_url, api_key=api_key or "no-key-set")
+        self.base_url = base_url
+        self.default_api_key = api_key or "no-key-set"
+        self._clients: Dict[str, AsyncOpenAI] = {}
+
+    def get_client(self, api_key: Optional[str] = None) -> AsyncOpenAI:
+        effective_key = api_key or self.default_api_key
+        if effective_key not in self._clients:
+            self._clients[effective_key] = AsyncOpenAI(base_url=self.base_url, api_key=effective_key)
+        return self._clients[effective_key]
 
     async def chat(self, req: ChatRequest) -> ChatResponse:
         start_time = time.monotonic()
+        client = self.get_client(req.api_key)
 
         formatted_messages = []
         for m in req.messages:
@@ -247,7 +256,7 @@ class GenericOpenAICompatProvider:
         if req.response_format:
             kwargs["response_format"] = req.response_format
 
-        response = await self.client.chat.completions.create(**kwargs)
+        response = await client.chat.completions.create(**kwargs)
         latency_ms = (time.monotonic() - start_time) * 1000.0
 
         choice = response.choices[0]

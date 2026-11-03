@@ -61,7 +61,19 @@ export interface Agent {
     accessory?: string;
     badge?: string;
   };
+  api_key?: string | null;
+  has_custom_api_key?: boolean;
+  masked_api_key?: string | null;
   created_at: string;
+}
+
+export interface KeyStatus {
+  alias: string;
+  masked_key: string;
+  is_manager_dedicated: boolean;
+  is_healthy: boolean;
+  total_calls: number;
+  cooldown_remaining_sec: number;
 }
 
 export interface Artifact {

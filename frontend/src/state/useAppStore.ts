@@ -8,6 +8,7 @@ import {
   Task,
   TaskTreeNode,
   UsageSummary,
+  KeyStatus,
 } from '../api/types';
 import { apiClient } from '../api/client';
 
@@ -18,7 +19,8 @@ export type ActiveDrawerTab =
   | 'artifacts'
   | 'approvals'
   | 'org'
-  | 'events';
+  | 'events'
+  | 'keys';
 
 interface AppState {
   projects: Project[];
@@ -31,6 +33,7 @@ interface AppState {
   approvals: Approval[];
   events: EventPayload[];
   usage: UsageSummary | null;
+  keyStatuses: KeyStatus[];
   activeDrawerTab: ActiveDrawerTab;
   isPaused: boolean;
   isLoading: boolean;
@@ -43,6 +46,7 @@ interface AppState {
   fetchAgents: () => Promise<void>;
   fetchApprovals: () => Promise<void>;
   fetchUsage: () => Promise<void>;
+  fetchKeys: () => Promise<void>;
   setSelectedAgent: (id: string | null) => void;
   setSelectedTask: (id: string | null) => void;
   setSelectedArtifact: (art: Artifact | null) => void;
@@ -62,6 +66,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   approvals: [],
   events: [],
   usage: null,
+  keyStatuses: [],
   activeDrawerTab: 'tree',
   isPaused: false,
   isLoading: false,
@@ -122,6 +127,15 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
+  fetchKeys: async () => {
+    try {
+      const keyStatuses = await apiClient.getKeys();
+      set({ keyStatuses });
+    } catch (e) {
+      console.error('Failed to load key statuses', e);
+    }
+  },
+
   setSelectedAgent: (id) => set({ selectedAgentId: id, activeDrawerTab: id ? 'inspector' : get().activeDrawerTab }),
   setSelectedTask: (id) => set({ selectedTaskId: id }),
   setSelectedArtifact: (art) => set({ selectedArtifact: art, activeDrawerTab: art ? 'artifacts' : get().activeDrawerTab }),
@@ -150,6 +164,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     // Auto-refresh usage on tool calls or completions
     if (evt.type === 'agent.tool_call' || evt.type === 'task.done') {
       get().fetchUsage();
+      get().fetchKeys();
     }
   },
 }));

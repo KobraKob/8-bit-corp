@@ -98,6 +98,7 @@ async def hire_dynamic_agent(
     model_tier: str = "fast",
     system_prompt: str = "",
     tools: Optional[List[str]] = None,
+    api_key: Optional[str] = None,
 ) -> Agent:
     """Hire a new dynamic agent at runtime."""
     role_key = title.lower().replace(" ", "_")[:50]
@@ -126,6 +127,7 @@ async def hire_dynamic_agent(
             tools_json=tools_list,
             status="active",
             sprite_json=sprite,
+            api_key=api_key.strip() if api_key and api_key.strip() else None,
         )
         session.add(new_agent)
         await session.commit()

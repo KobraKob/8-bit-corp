@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useAppStore } from '../state/useAppStore';
 import { apiClient } from '../api/client';
-import { Shield, Sparkles, Terminal, UserX, Save, Check } from 'lucide-react';
+import { Shield, Sparkles, Terminal, UserX, Save, Check, Key, ShieldCheck, Trash2 } from 'lucide-react';
 
 export const AgentInspectorPanel: React.FC = () => {
   const { selectedAgentId, agents, fetchAgents } = useAppStore();
@@ -9,6 +9,7 @@ export const AgentInspectorPanel: React.FC = () => {
 
   const [prompt, setPrompt] = useState(agent?.system_prompt || '');
   const [modelTier, setModelTier] = useState(agent?.model_tier || 'fast');
+  const [customKeyInput, setCustomKeyInput] = useState('');
   const [isSaved, setIsSaved] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -17,6 +18,7 @@ export const AgentInspectorPanel: React.FC = () => {
     if (agent) {
       setPrompt(agent.system_prompt);
       setModelTier(agent.model_tier);
+      setCustomKeyInput('');
       setIsSaved(false);
     }
   }, [agent?.id]);
@@ -29,18 +31,38 @@ export const AgentInspectorPanel: React.FC = () => {
     );
   }
 
+  const isHigherManager = agent.level <= 3;
+
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      await apiClient.updateAgent(agent.id, {
+      const payload: any = {
         system_prompt: prompt,
         model_tier: modelTier,
-      });
+      };
+      if (customKeyInput.trim()) {
+        payload.api_key = customKeyInput.trim();
+      }
+      await apiClient.updateAgent(agent.id, payload);
       await fetchAgents();
+      setCustomKeyInput('');
       setIsSaved(true);
       setTimeout(() => setIsSaved(false), 2500);
     } catch (e) {
       console.error('Failed to update agent', e);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleClearCustomKey = async () => {
+    setIsSaving(true);
+    try {
+      await apiClient.updateAgent(agent.id, { api_key: '' });
+      await fetchAgents();
+      setCustomKeyInput('');
+    } catch (e) {
+      console.error('Failed to clear agent API key', e);
     } finally {
       setIsSaving(false);
     }
@@ -70,6 +92,55 @@ export const AgentInspectorPanel: React.FC = () => {
         >
           {agent.status}
         </span>
+      </div>
+
+      {/* Higher Manager Priority Notice */}
+      {isHigherManager && (
+        <div className="p-2.5 rounded bg-purple-950/40 border border-purple-800/70 flex items-start gap-2">
+          <ShieldCheck size={15} className="text-purple-400 shrink-0 mt-0.5" />
+          <div className="text-[11px] leading-relaxed text-purple-200 font-mono">
+            <span className="font-semibold text-purple-100">Executive Priority:</span> Assigned to dedicated manager key pool with zero subordinate interference.
+          </div>
+        </div>
+      )}
+
+      {/* Dedicated API Key Override */}
+      <div className="flex flex-col gap-1.5 p-2.5 rounded bg-slate-900/60 border border-slate-800">
+        <label className="text-[11px] font-semibold text-slate-300 flex items-center justify-between">
+          <span className="flex items-center gap-1.5">
+            <Key size={13} className="text-amber-400" />
+            Dedicated Agent API Key Override
+          </span>
+          {agent.has_custom_api_key && (
+            <span className="text-[10px] text-emerald-400 font-mono">Custom Key Set</span>
+          )}
+        </label>
+        <p className="text-[10px] text-slate-400 font-mono">
+          Give this manager their own API key to bypass pool sharing completely.
+        </p>
+
+        {agent.has_custom_api_key ? (
+          <div className="flex items-center justify-between bg-slate-950 px-2.5 py-1.5 rounded border border-slate-800">
+            <span className="font-mono text-slate-300 text-[11px]">
+              Active: {agent.masked_api_key || '••••••••••••'}
+            </span>
+            <button
+              onClick={handleClearCustomKey}
+              className="text-slate-400 hover:text-rose-400 flex items-center gap-1 text-[10px] transition-colors"
+              title="Clear custom key"
+            >
+              <Trash2 size={11} /> Clear
+            </button>
+          </div>
+        ) : (
+          <input
+            type="password"
+            placeholder="Paste personal Groq API key (e.g. gsk_...)"
+            value={customKeyInput}
+            onChange={(e) => setCustomKeyInput(e.target.value)}
+            className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-slate-200 text-xs font-mono focus:outline-none focus:border-amber-500"
+          />
+        )}
       </div>
 
       {/* Model Tier Selector */}

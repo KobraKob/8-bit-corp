@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Any, Dict, List, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ProjectCreateRequest(BaseModel):
@@ -69,6 +69,7 @@ class AgentHireRequest(BaseModel):
     model_tier: str = Field(default="fast")
     system_prompt: str = Field(default="")
     tools: List[str] = Field(default_factory=list)
+    api_key: Optional[str] = None
 
 
 class AgentUpdateRequest(BaseModel):
@@ -77,9 +78,12 @@ class AgentUpdateRequest(BaseModel):
     model_tier: Optional[str] = None
     tools_json: Optional[List[str]] = None
     department: Optional[str] = None
+    api_key: Optional[str] = None
 
 
 class AgentResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     role_key: str
     display_name: str
@@ -91,6 +95,8 @@ class AgentResponse(BaseModel):
     tools_json: List[str]
     status: str
     sprite_json: Dict[str, Any]
+    has_custom_api_key: bool = False
+    masked_api_key: Optional[str] = None
     created_at: datetime
 
 
@@ -104,3 +110,18 @@ class UsageResponse(BaseModel):
     total_completion_tokens: int
     total_cost_estimate: float
     models_daily_usage: List[Dict[str, Any]]
+
+
+class KeyStatusResponse(BaseModel):
+    alias: str
+    masked_key: str
+    is_manager_dedicated: bool
+    is_healthy: bool
+    total_calls: int
+    cooldown_remaining_sec: float
+
+
+class KeyAddRequest(BaseModel):
+    key: str = Field(min_length=4)
+    alias: Optional[str] = None
+    is_manager_dedicated: bool = False

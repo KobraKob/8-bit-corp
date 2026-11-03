@@ -1,13 +1,18 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useAppStore } from '../state/useAppStore';
-import { DollarSign, Cpu, Play, Pause, Activity } from 'lucide-react';
+import { DollarSign, Cpu, Play, Pause, Key } from 'lucide-react';
 
 export const BottomBar: React.FC = () => {
-  const { usage, isPaused, togglePause } = useAppStore();
+  const { usage, keyStatuses, fetchKeys, setActiveDrawerTab, isPaused, togglePause } = useAppStore();
+
+  useEffect(() => {
+    fetchKeys();
+  }, []);
 
   const cost = usage?.total_cost_estimate || 0.0;
   const tokens = (usage?.total_prompt_tokens || 0) + (usage?.total_completion_tokens || 0);
   const calls = usage?.total_calls || 0;
+  const healthyKeys = keyStatuses.filter((k) => k.is_healthy).length;
 
   return (
     <div className="h-9 bg-slate-950 border-t border-slate-800 flex items-center justify-between px-3 text-[11px] font-mono text-slate-400 select-none z-20">
@@ -29,6 +34,19 @@ export const BottomBar: React.FC = () => {
           <span>Total Tokens: </span>
           <span className="font-semibold text-slate-200">{tokens.toLocaleString()}</span>
         </div>
+
+        {/* Key Pool Status Badge */}
+        <button
+          onClick={() => setActiveDrawerTab('keys')}
+          className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-slate-900 border border-slate-800 hover:border-amber-700/60 text-slate-300 transition-colors cursor-pointer"
+          title="Open API Key Pool"
+        >
+          <Key size={12} className="text-amber-400" />
+          <span>Keys: </span>
+          <span className="font-semibold text-amber-300">
+            {healthyKeys}/{keyStatuses.length || 1} Active
+          </span>
+        </button>
       </div>
 
       {/* Quota & Pause Controls */}

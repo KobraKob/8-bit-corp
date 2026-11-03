@@ -47,6 +47,7 @@ async def hire_agent(req: AgentHireRequest):
         model_tier=req.model_tier,
         system_prompt=req.system_prompt,
         tools=req.tools,
+        api_key=req.api_key,
     )
     return new_agent
 
@@ -68,6 +69,10 @@ async def update_agent(agent_id: str, req: AgentUpdateRequest):
             agt.tools_json = req.tools_json
         if req.department is not None:
             agt.department = req.department
+        if req.api_key is not None:
+            # Set or clear custom dedicated API key
+            clean_key = req.api_key.strip()
+            agt.api_key = clean_key if clean_key else None
 
         await session.commit()
         await session.refresh(agt)

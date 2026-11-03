@@ -51,7 +51,19 @@ class Agent(Base):
     tools_json = Column(JSON, default=list, nullable=False)
     status = Column(String(50), default="active", nullable=False)
     sprite_json = Column(JSON, default=dict, nullable=False)
+    api_key = Column(String(255), nullable=True)
     created_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+    @property
+    def has_custom_api_key(self) -> bool:
+        return bool(self.api_key and self.api_key.strip())
+
+    @property
+    def masked_api_key(self) -> Optional[str]:
+        if not self.api_key or len(self.api_key.strip()) < 8:
+            return None
+        k = self.api_key.strip()
+        return f"{k[:4]}...{k[-4:]}"
 
 
 class Task(Base):
@@ -139,6 +151,7 @@ class LLMCall(Base):
     provider = Column(String(50), nullable=False)
     model = Column(String(100), nullable=False)
     tier = Column(String(50), nullable=False)
+    key_alias = Column(String(100), default="default", nullable=False)
     prompt_tokens = Column(Integer, default=0, nullable=False)
     completion_tokens = Column(Integer, default=0, nullable=False)
     latency_ms = Column(Float, default=0.0, nullable=False)
@@ -176,6 +189,7 @@ class DailyUsage(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     model = Column(String(100), nullable=False, index=True)
+    key_alias = Column(String(100), default="default", nullable=False, index=True)
     day = Column(String(10), nullable=False, index=True)  # YYYY-MM-DD
     requests_count = Column(Integer, default=0, nullable=False)
     tokens_count = Column(Integer, default=0, nullable=False)

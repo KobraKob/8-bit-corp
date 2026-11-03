@@ -7,6 +7,7 @@ import { ArtifactsPanel } from '../panels/ArtifactsPanel';
 import { ApprovalsPanel } from '../panels/ApprovalsPanel';
 import { OrgEditorPanel } from '../panels/OrgEditorPanel';
 import { EventLogPanel } from '../panels/EventLogPanel';
+import { KeyPoolPanel } from '../panels/KeyPoolPanel';
 import {
   Network,
   Kanban,
@@ -15,12 +16,14 @@ import {
   ShieldAlert,
   Users,
   Activity,
+  Key,
 } from 'lucide-react';
 
 const TABS: { id: ActiveDrawerTab; label: string; icon: React.FC<{ size: number }> }[] = [
   { id: 'tree', label: 'Tree', icon: Network },
   { id: 'kanban', label: 'Kanban', icon: Kanban },
   { id: 'inspector', label: 'Inspector', icon: UserCheck },
+  { id: 'keys', label: 'Keys', icon: Key },
   { id: 'artifacts', label: 'Artifacts', icon: FileText },
   { id: 'approvals', label: 'Approvals', icon: ShieldAlert },
   { id: 'org', label: 'Org', icon: Users },
@@ -62,6 +65,7 @@ export const RightDrawer: React.FC = () => {
         {activeDrawerTab === 'tree' && <TaskTreePanel />}
         {activeDrawerTab === 'kanban' && <KanbanPanel />}
         {activeDrawerTab === 'inspector' && <AgentInspectorPanel />}
+        {activeDrawerTab === 'keys' && <KeyPoolPanel />}
         {activeDrawerTab === 'artifacts' && <ArtifactsPanel />}
         {activeDrawerTab === 'approvals' && <ApprovalsPanel />}
         {activeDrawerTab === 'org' && <OrgEditorPanel />}

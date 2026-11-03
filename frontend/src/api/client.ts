@@ -7,6 +7,7 @@ import {
   Task,
   TaskTreeNode,
   UsageSummary,
+  KeyStatus,
 } from './types';
 
 const API_BASE = 'http://localhost:8000/api';
@@ -79,6 +80,18 @@ export const apiClient = {
 
   // Usage
   getUsage: () => request<UsageSummary>('/usage'),
+
+  // API Key Pool (5-10 Keys + Higher Managers)
+  getKeys: () => request<KeyStatus[]>('/keys'),
+  addKey: (data: { key: string; alias?: string; is_manager_dedicated?: boolean }) =>
+    request<KeyStatus>('/keys', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  deleteKey: (alias: string) =>
+    request<{ success: boolean; message: string }>(`/keys/${alias}`, {
+      method: 'DELETE',
+    }),
 
   // Events
   getEvents: (after = 0, projectId?: string) => {

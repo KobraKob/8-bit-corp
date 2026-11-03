@@ -6,6 +6,7 @@ from app.api.agents import router as agents_router
 from app.api.approvals import router as approvals_router
 from app.api.artifacts import router as artifacts_router
 from app.api.events import router as events_router
+from app.api.keys import router as keys_router
 from app.api.projects import router as projects_router
 from app.api.tasks import router as tasks_router
 from app.api.usage import router as usage_router
@@ -55,6 +56,7 @@ app.include_router(agents_router)
 app.include_router(artifacts_router)
 app.include_router(approvals_router)
 app.include_router(usage_router)
+app.include_router(keys_router)
 app.include_router(events_router)
 app.include_router(ws_router)
 
