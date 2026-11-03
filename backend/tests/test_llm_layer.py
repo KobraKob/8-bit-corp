@@ -114,7 +114,7 @@ async def test_llm_router_times_out_stalled_provider(monkeypatch):
     monkeypatch.setattr(router_module, "LLM_REQUEST_TIMEOUT_SECONDS", 0.01)
     router = LLMRouter(override_provider=HangingProvider())
 
-    with pytest.raises(RateLimitExhaustedError, match="TimeoutError"):
+    with pytest.raises(RateLimitExhaustedError, match="timed out"):
         await router.execute_chat(
             tier="fast",
             messages=[ChatMessage(role="user", content="Test timeout")],
