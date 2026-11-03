@@ -211,7 +211,7 @@ export const KeyPoolPanel: React.FC = () => {
         <button
           type="submit"
           disabled={isAdding || !newKey.trim()}
-          className="mt-1 w-full py-1.5 px-3 rounded bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white font-medium flex items-center justify-center gap-1.5 transition-all text-xs shadow-sm"
+          className="mt-1 w-full py-1.5 px-3 rounded bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white font-medium flex items-center justify-center gap-1.5 transition-colors text-xs "
         >
           <Plus size={13} />
           {isAdding ? 'Registering Key...' : 'Register Key into Pool'}
