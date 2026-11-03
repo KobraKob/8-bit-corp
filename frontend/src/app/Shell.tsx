@@ -5,6 +5,7 @@ import { LeftSidebar } from './LeftSidebar';
 import { RightDrawer } from './RightDrawer';
 import { BottomBar } from './BottomBar';
 import { ProjectIntakeModal } from '../panels/ProjectIntakeModal';
+import { LiveActivityHUD } from '../panels/LiveActivityHUD';
 import { useAppStore } from '../state/useAppStore';
 import { wsClient } from '../state/wsClient';
 
@@ -25,7 +26,19 @@ export const Shell: React.FC = () => {
     // Connect WebSocket
     wsClient.connect();
 
+    // Background sync loop every 2.5 seconds to guarantee the frontend stays live
+    const interval = setInterval(() => {
+      const activeId = useAppStore.getState().activeProjectId;
+      if (activeId) {
+        useAppStore.getState().fetchTaskTree();
+      }
+      useAppStore.getState().fetchProjects();
+      useAppStore.getState().fetchUsage();
+      useAppStore.getState().fetchApprovals();
+    }, 2500);
+
     return () => {
+      clearInterval(interval);
       wsClient.disconnect();
     };
   }, []);
@@ -68,11 +81,16 @@ export const Shell: React.FC = () => {
         {/* Left Sidebar */}
         <LeftSidebar onOpenIntake={() => setIsIntakeOpen(true)} />
 
-        {/* Center: Pixel Office Canvas */}
+        {/* Center: Pixel Office Canvas with Live HUD */}
         <div className="flex-1 relative overflow-hidden bg-[#090d16]">
+          {/* Top Live Progress & Status HUD */}
+          <LiveActivityHUD />
+
+          {/* Phaser Canvas */}
           <div ref={officeContainerRef} className="w-full h-full" />
+
           {/* Subtle controls overlay tooltip */}
-          <div className="absolute top-2 left-2 bg-slate-950/80 backdrop-blur-sm border border-slate-800/80 px-2.5 py-1 rounded text-[10px] font-mono text-slate-400 pointer-events-none select-none">
+          <div className="absolute bottom-2 left-2 bg-slate-950/80 backdrop-blur-sm border border-slate-800/80 px-2.5 py-1 rounded text-[10px] font-mono text-slate-400 pointer-events-none select-none z-10">
             Click agent to inspect • Drag to pan • Scroll to zoom
           </div>
         </div>

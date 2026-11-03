@@ -1,9 +1,24 @@
 import React, { useEffect } from 'react';
 import { useAppStore } from '../state/useAppStore';
-import { DollarSign, Cpu, Play, Pause, Key } from 'lucide-react';
+import { DollarSign, Cpu, Play, Pause, Key, Zap } from 'lucide-react';
+import { TaskTreeNode } from '../api/types';
+
+function countActiveTasks(nodes: TaskTreeNode[]): number {
+  let count = 0;
+  function walk(items: TaskTreeNode[]) {
+    for (const item of items) {
+      if (item.status === 'in_progress' || item.status === 'integrating') {
+        count++;
+      }
+      if (item.children) walk(item.children);
+    }
+  }
+  walk(nodes);
+  return count;
+}
 
 export const BottomBar: React.FC = () => {
-  const { usage, keyStatuses, fetchKeys, setActiveDrawerTab, isPaused, togglePause } = useAppStore();
+  const { usage, keyStatuses, taskTree, fetchKeys, setActiveDrawerTab, isPaused, togglePause } = useAppStore();
 
   useEffect(() => {
     fetchKeys();
@@ -13,6 +28,7 @@ export const BottomBar: React.FC = () => {
   const tokens = (usage?.total_prompt_tokens || 0) + (usage?.total_completion_tokens || 0);
   const calls = usage?.total_calls || 0;
   const healthyKeys = keyStatuses.filter((k) => k.is_healthy).length;
+  const activeCount = countActiveTasks(taskTree);
 
   return (
     <div className="h-9 bg-slate-950 border-t border-slate-800 flex items-center justify-between px-3 text-[11px] font-mono text-slate-400 select-none z-20">
@@ -35,6 +51,23 @@ export const BottomBar: React.FC = () => {
           <span className="font-semibold text-slate-200">{tokens.toLocaleString()}</span>
         </div>
 
+        {/* Live Active Execution Indicator */}
+        <button
+          onClick={() => setActiveDrawerTab('tree')}
+          className={`flex items-center gap-1.5 px-2 py-0.5 rounded border transition-colors cursor-pointer ${
+            activeCount > 0
+              ? 'bg-amber-950/60 border-amber-800 text-amber-300'
+              : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-300'
+          }`}
+          title="Click to view execution tree"
+        >
+          <Zap size={12} className={activeCount > 0 ? 'text-amber-400 animate-pulse' : 'text-slate-500'} />
+          <span>Tasks: </span>
+          <span className="font-semibold">
+            {activeCount > 0 ? `${activeCount} Running` : 'Idle'}
+          </span>
+        </button>
+
         {/* Key Pool Status Badge */}
         <button
           onClick={() => setActiveDrawerTab('keys')}
@@ -52,8 +85,8 @@ export const BottomBar: React.FC = () => {
       {/* Quota & Pause Controls */}
       <div className="flex items-center gap-3">
         <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-[10px]">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-          <span>Engine Status: Healthy</span>
+          <span className={`w-1.5 h-1.5 rounded-full ${activeCount > 0 ? 'bg-amber-400 animate-ping' : 'bg-emerald-400 animate-pulse'}`} />
+          <span>Engine: {activeCount > 0 ? 'Executing' : 'Healthy'}</span>
         </div>
 
         <button
