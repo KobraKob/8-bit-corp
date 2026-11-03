@@ -66,7 +66,7 @@ class WorkspaceManager:
         return self.resolve_safe_path(project_id, f"agents/{safe_agent_id}/{private_path}")
 
     def write_agent_file(self, project_id: str, agent_id: str, relative_path: str, content: str) -> str:
-        normalized = relative_path.replace("\\\\", "/")
+        normalized = relative_path.replace("\\", "/")
         if normalized == "artifacts" or normalized.startswith("artifacts/"):
             raise SecurityViolationError("Use create_artifact to register deliverables in the shared artifacts directory.")
         target = self.resolve_agent_path(project_id, agent_id, relative_path)
