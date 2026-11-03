@@ -22,6 +22,7 @@ from app.orchestrator.scheduler import scheduler
 from app.events.event_bus import event_bus
 from app.events.event_types import EventType
 from app.workspace.workspace_manager import workspace_manager
+from app.orchestrator.company_memory import save_memory
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
@@ -46,6 +47,13 @@ async def create_project(req: ProjectCreateRequest):
 
     # Provision a private workspace for every currently active agent.
     workspace_manager.provision_agent_directories(proj_id, active_agent_ids)
+    # Preserve the original client brief as searchable project memory.
+    await save_memory(
+        title=f"Client requirements — {req.name}",
+        body=req.brief,
+        tags="client-requirements, project-brief, source-of-truth",
+        project_id=proj_id,
+    )
 
     return proj
 
