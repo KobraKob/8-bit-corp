@@ -6,6 +6,7 @@ import { RightDrawer } from './RightDrawer';
 import { BottomBar } from './BottomBar';
 import { ProjectIntakeModal } from '../panels/ProjectIntakeModal';
 import { LiveActivityHUD } from '../panels/LiveActivityHUD';
+import { OfficeControlPanel } from '../panels/OfficeControlPanel';
 import { useAppStore } from '../state/useAppStore';
 import { wsClient } from '../state/wsClient';
 
@@ -79,24 +80,26 @@ export const Shell: React.FC = () => {
       {/* Main 3-column Layout */}
       <div className="flex flex-1 overflow-hidden">
         {/* Left Sidebar */}
-        <LeftSidebar onOpenIntake={() => setIsIntakeOpen(true)} />
+        <div className="hidden shrink-0 lg:flex"><LeftSidebar onOpenIntake={() => setIsIntakeOpen(true)} /></div>
 
         {/* Center: Pixel Office Canvas with Live HUD */}
-        <div className="flex-1 relative overflow-hidden bg-[#090d16]">
+        <div className="relative min-w-0 flex-1 overflow-hidden bg-[#090d16]">
           {/* Top Live Progress & Status HUD */}
           <LiveActivityHUD />
+
+          <OfficeControlPanel />
 
           {/* Phaser Canvas */}
           <div ref={officeContainerRef} className="w-full h-full" />
 
           {/* Subtle controls overlay tooltip */}
           <div className="absolute bottom-2 left-2 bg-slate-950/80 backdrop-blur-sm border border-slate-800/80 px-2.5 py-1 rounded text-[10px] font-mono text-slate-400 pointer-events-none select-none z-10">
-            Click agent to inspect • Right-drag to pan • Scroll to zoom
+            Click employee or room • Right-drag to pan • Scroll to zoom
           </div>
         </div>
 
         {/* Right Drawer */}
-        <RightDrawer />
+        <div className="hidden shrink-0 2xl:flex"><RightDrawer /></div>
       </div>
 
       {/* Bottom Status / Payroll Bar */}
