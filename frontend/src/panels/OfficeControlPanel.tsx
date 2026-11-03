@@ -25,7 +25,6 @@ export const OfficeControlPanel: React.FC = () => {
   const [targetId, setTargetId] = React.useState('');
   const [taskId, setTaskId] = React.useState('');
   const [message, setMessage] = React.useState('');
-  const [meetingActive, setMeetingActive] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
   const [feedback, setFeedback] = React.useState('');
   const [timelineIndex, setTimelineIndex] = React.useState(0);
@@ -33,9 +32,10 @@ export const OfficeControlPanel: React.FC = () => {
   const employees = React.useMemo(() => agents.filter((agent) => agent.status === 'active'), [agents]);
   const departments = React.useMemo(() => ['All departments', ...Array.from(new Set(employees.map((a) => a.department))).sort()], [employees]);
   const visibleEmployees = department === 'All departments' ? employees : employees.filter((a) => a.department === department);
-  const tasks = React.useMemo(() => flatten(taskTree).filter((task) => !['done', 'failed', 'cancelled'].includes(task.status)), [taskTree]);
+  const tasks = React.useMemo(() => flatten(taskTree).filter((task) => task.status === 'pending' || task.status === 'assigned'), [taskTree]);
   const chronologicalEvents = React.useMemo(() => [...events].sort((a, b) => a.id - b.id), [events]);
   const selectedEvent = chronologicalEvents[timelineIndex];
+  const meetingActive = events.find((event) => (event.payload?.room || 'Boardroom') === (selectedRoom || 'Boardroom') && ['office.meeting.started', 'office.meeting.ended'].includes(event.type))?.type === 'office.meeting.started';
 
   React.useEffect(() => {
     if (!actorId && employees[0]) setActorId(employees[0].id);
@@ -52,8 +52,6 @@ export const OfficeControlPanel: React.FC = () => {
     setFeedback('');
     try {
       await apiClient.officeAction({ action, agent_id: actorId, room: selectedRoom || 'Boardroom', ...extra });
-      if (action === 'meeting_start') setMeetingActive(true);
-      if (action === 'meeting_end') setMeetingActive(false);
       if (action === 'message') setMessage('');
       setFeedback(action === 'handoff' ? 'Task reassigned.' : action === 'message' ? 'Message delivered.' : 'Office updated.');
     } catch (error) {
@@ -135,14 +133,15 @@ export const OfficeControlPanel: React.FC = () => {
               </div>
             </div>
             <div className="border-t border-slate-800 pt-3">
-              <div className="mb-2 flex items-center gap-2 text-xs font-semibold"><Workflow size={13} /> Task handoff</div>
+              <div className="mb-1 flex items-center gap-2 text-xs font-semibold"><Workflow size={13} /> Task handoff</div>
+              <div className="mb-2 text-[10px] text-slate-500">Queued tasks only. Active worker leases stay protected.</div>
               <select value={taskId} onChange={(e) => setTaskId(e.target.value)} className="mb-2 w-full rounded-lg border border-slate-700 bg-slate-900 px-2.5 py-2 text-xs">
                 <option value="">Select active task</option>{tasks.map((task) => <option key={task.id} value={task.id}>{task.title}</option>)}
               </select>
               <select value={targetId} onChange={(e) => setTargetId(e.target.value)} className="mb-2 w-full rounded-lg border border-slate-700 bg-slate-900 px-2.5 py-2 text-xs">
                 {employees.filter((a) => a.id !== actorId).map((a) => <option key={a.id} value={a.id}>{a.display_name} · {a.department}</option>)}
               </select>
-              <button disabled={busy || !taskId || !targetId} onClick={() => void act('handoff', { target_agent_id: targetId, task_id: taskId })} className="w-full rounded-lg bg-cyan-500 px-3 py-2 text-xs font-semibold text-slate-950 disabled:opacity-40">Transfer task</button>
+              <button disabled={busy || !taskId || !targetId} onClick={() => void act('handoff', { target_agent_id: targetId, task_id: taskId })} className="w-full rounded-lg bg-cyan-500 px-3 py-2 text-xs font-semibold text-slate-950 disabled:opacity-40">Transfer queued task</button>
             </div>
           </div>
         )}
