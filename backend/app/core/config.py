@@ -62,6 +62,11 @@ class SettingsConfig(BaseModel):
     task_token_budget: int = 25000
     global_concurrency: int = 2
     wip_limit_per_agent: int = 1
+    task_lease_seconds: int = 300
+    max_delegations_per_task: int = 1
+    max_project_tasks: int = 100
+    llm_max_retries: int = 2
+    llm_retry_base_seconds: float = 1.0
     approval_gates: ApprovalGates = Field(default_factory=ApprovalGates)
 
 

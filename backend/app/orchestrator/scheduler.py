@@ -409,18 +409,16 @@ class Scheduler:
             async with async_session_factory() as session:
                 t = await session.get(Task, task_id)
                 if t and t.lease_token == locals().get("lease_token") and not TaskFSM.is_terminal(TaskStatus(t.status)):
-                    if t.status == TaskStatus.REVIEWING.value:
-                        t.status = TaskStatus.IN_REVIEW.value
+                    was_reviewing = t.status == TaskStatus.REVIEWING.value
+                    t.attempt += 1
+                    t.error = str(exc)
+                    if t.attempt >= t.max_attempts:
+                        t.status = TaskStatus.FAILED.value
+                        t.next_retry_at = None
                     else:
-                        t.attempt += 1
-                        t.error = str(exc)
-                        if t.attempt >= t.max_attempts:
-                            t.status = TaskStatus.FAILED.value
-                            t.next_retry_at = None
-                        else:
-                            t.status = TaskStatus.ASSIGNED.value
-                            delay = min(300, 5 * (2 ** max(0, t.attempt - 1)))
-                            t.next_retry_at = datetime.now(timezone.utc) + timedelta(seconds=delay)
+                        t.status = TaskStatus.IN_REVIEW.value if was_reviewing else TaskStatus.ASSIGNED.value
+                        delay = min(300, 5 * (2 ** max(0, t.attempt - 1)))
+                        t.next_retry_at = datetime.now(timezone.utc) + timedelta(seconds=delay)
                     await session.commit()
         finally:
             async with async_session_factory() as session:
