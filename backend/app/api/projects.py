@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 
 from app.api.schemas import (
     ProjectCreateRequest,
@@ -55,6 +55,21 @@ async def list_projects(
     limit: int = Query(50, ge=1, le=100),
 ):
     async with async_session_factory() as session:
+        # Backfill projects completed before lifecycle status was persisted.
+        completed_ids = (await session.execute(
+            select(Task.project_id).where(
+                Task.parent_id.is_(None),
+                Task.status == TaskStatus.DONE.value,
+            )
+        )).scalars().all()
+        if completed_ids:
+            await session.execute(
+                update(Project)
+                .where(Project.id.in_(completed_ids), Project.status == "active")
+                .values(status="completed")
+            )
+            await session.commit()
+
         stmt = select(Project).order_by(Project.created_at.desc()).offset(skip).limit(limit)
         res = await session.execute(stmt)
         return res.scalars().all()
