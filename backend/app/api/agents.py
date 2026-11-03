@@ -3,11 +3,13 @@ from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import select
 
 from app.api.schemas import AgentHireRequest, AgentResponse, AgentUpdateRequest
-from app.db.models import Agent
+from app.db.models import Agent, Project
 from app.db.session import async_session_factory
 from app.domain.org_model import hire_dynamic_agent
 from app.events.event_bus import event_bus
 from app.events.event_types import EventType
+from app.db.session import async_session_factory
+from app.workspace.workspace_manager import workspace_manager
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
 
@@ -49,6 +51,10 @@ async def hire_agent(req: AgentHireRequest):
         tools=req.tools,
         api_key=req.api_key,
     )
+    async with async_session_factory() as session:
+        project_ids = (await session.scalars(select(Project.id))).all()
+    for project_id in project_ids:
+        workspace_manager.get_agent_dir(project_id, new_agent.id)
     return new_agent
 
 
