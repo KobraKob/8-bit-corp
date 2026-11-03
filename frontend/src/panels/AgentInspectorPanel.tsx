@@ -84,11 +84,12 @@ export const AgentInspectorPanel: React.FC = () => {
   return (
     <div className="p-4 flex flex-col space-y-4 text-xs overflow-y-auto max-h-[calc(100vh-140px)]">
       {/* Header */}
-      <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-        <div>
-          <h3 className="font-bold text-sm text-slate-100">{agent.display_name}</h3>
-          <p className="text-[11px] text-slate-400 font-sans">
-            {agent.department} • Level {agent.level} • {agent.role_key}
+      <div className="flex items-center gap-3 pb-3 border-b border-slate-800">
+        <AgentAvatar agent={agent} size={56} />
+        <div className="flex-1 min-w-0">
+          <h3 className="font-medium text-sm text-slate-100">{agent.display_name}</h3>
+          <p className="text-[11px] text-slate-400">
+            {agent.department}, level {agent.level}, {agent.role_key}
           </p>
         </div>
         <span
@@ -104,7 +105,7 @@ export const AgentInspectorPanel: React.FC = () => {
       {isHigherManager && (
         <div className="p-2.5 rounded bg-purple-950/40 border border-purple-800/70 flex items-start gap-2">
           <ShieldCheck size={15} className="text-purple-400 shrink-0 mt-0.5" />
-          <div className="text-[11px] leading-relaxed text-purple-200 font-mono">
+          <div className="text-[11px] leading-relaxed text-purple-200 font-sans">
             <span className="font-semibold text-purple-100">Executive Priority:</span> Assigned to dedicated manager key pool with zero subordinate interference.
           </div>
         </div>
@@ -196,11 +197,12 @@ export const AgentInspectorPanel: React.FC = () => {
       </div>
 
       {/* Action Buttons */}
+      {saveError && <p className="app-inline-error" role="alert">{saveError}</p>}
       <div className="flex items-center justify-between pt-2">
         <button
           onClick={handleRetire}
           disabled={agent.status === 'retired'}
-          className="px-3 py-1.5 rounded border border-rose-900/50 text-rose-400 hover:bg-rose-950/30 flex items-center gap-1.5 transition-all text-xs"
+          className="px-3 py-1.5 rounded border border-rose-900/50 text-rose-400 hover:bg-rose-950/30 flex items-center gap-1.5 transition-colors text-xs"
         >
           <UserX size={13} /> Retire
         </button>
