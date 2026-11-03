@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { useAppStore } from '../state/useAppStore';
 import { TaskTreeNode } from '../api/types';
-import { Activity, AlertCircle, CheckCircle2, Clock3, Layers, RefreshCw, ShieldAlert } from 'lucide-react';
+import { Activity, AlertCircle, RefreshCw, ShieldAlert } from 'lucide-react';
 
 function flattenTree(nodes: TaskTreeNode[]): TaskTreeNode[] {
   const result: TaskTreeNode[] = [];
