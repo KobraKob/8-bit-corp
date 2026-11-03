@@ -99,3 +99,23 @@ async def test_explicit_mock_mode_runs_without_provider_keys(monkeypatch):
         messages=[ChatMessage(role="user", content="Return a short test response.")],
     )
     assert response.text
+
+
+class HangingProvider:
+    async def chat(self, req):
+        await asyncio.sleep(10)
+        return ChatResponse(text="too late", usage=UsageInfo())
+
+
+@pytest.mark.asyncio
+async def test_llm_router_times_out_stalled_provider(monkeypatch):
+    import app.llm.router as router_module
+
+    monkeypatch.setattr(router_module, "LLM_REQUEST_TIMEOUT_SECONDS", 0.01)
+    router = LLMRouter(override_provider=HangingProvider())
+
+    with pytest.raises(RateLimitExhaustedError, match="timed out"):
+        await router.execute_chat(
+            tier="fast",
+            messages=[ChatMessage(role="user", content="Test timeout")],
+        )

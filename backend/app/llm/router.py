@@ -1,3 +1,4 @@
+import asyncio
 import os
 import time
 from typing import Any, Callable, Dict, List, Optional, Type, TypeVar
@@ -23,6 +24,7 @@ from app.llm.provider import (
 from app.llm.types import ChatMessage, ChatRequest, ChatResponse
 
 T = TypeVar("T", bound=BaseModel)
+LLM_REQUEST_TIMEOUT_SECONDS = 45.0
 
 
 class LLMRouter:
@@ -146,7 +148,11 @@ class LLMRouter:
                 )
 
                 try:
-                    resp = await provider.chat(req)
+                    # Bound every provider request. The runtime's task-level
+                    # timeout is checked between calls; without a provider-level
+                    # timeout a single stalled HTTP request can occupy a worker
+                    # indefinitely and prevent all project progress.
+                    resp = await asyncio.wait_for(provider.chat(req), timeout=LLM_REQUEST_TIMEOUT_SECONDS)
                     latency = (time.monotonic() - start_time) * 1000.0
 
                     # Log successful call to DB
@@ -168,8 +174,12 @@ class LLMRouter:
 
                 except Exception as exc:
                     latency = (time.monotonic() - start_time) * 1000.0
-                    last_error = str(exc)
-                    logger.error(f"LLM call failed with key '{key_alias}' on model {model_name}: {exc}")
+                    last_error = (
+                        f"Provider request timed out after {LLM_REQUEST_TIMEOUT_SECONDS:.0f}s"
+                        if isinstance(exc, asyncio.TimeoutError)
+                        else str(exc)
+                    )
+                    logger.error(f"LLM call failed with key '{key_alias}' on model {model_name}: {last_error}")
 
                     # If 429 rate limit error, put this specific key on cooldown
                     if "429" in str(exc) or "rate_limit" in str(exc).lower():

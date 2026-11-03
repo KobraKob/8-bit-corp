@@ -129,6 +129,7 @@ class Scheduler:
             )
             queued_tasks = (await session.execute(stmt)).scalars().all()
             ready: List[Task] = []
+            blocked_events = []
             for task in queued_tasks:
                 if task.project_id in self._paused_projects or task.id in self._active_tasks:
                     continue
@@ -143,13 +144,44 @@ class Scheduler:
                 )
                 dep_rows = (await session.execute(dep_stmt)).all()
                 dependency_statuses = {dependency_id: status for dependency_id, status in dep_rows}
+                missing = [dep_id for dep_id in dependencies if dep_id not in dependency_statuses]
+                unsuccessful = [
+                    dep_id for dep_id, dep_status in dependency_statuses.items()
+                    if dep_status in (
+                        TaskStatus.BLOCKED.value,
+                        TaskStatus.FAILED.value,
+                        TaskStatus.CANCELLED.value,
+                    )
+                ]
+                if missing or unsuccessful:
+                    reasons = []
+                    if missing:
+                        reasons.append("missing dependencies: " + ", ".join(missing))
+                    if unsuccessful:
+                        reasons.append("dependencies did not complete: " + ", ".join(unsuccessful))
+                    task.status = TaskStatus.BLOCKED.value
+                    task.error = "Blocked by " + "; ".join(reasons)
+                    blocked_events.append((task.project_id, task.id, task.assignee_agent_id, task.error))
+                    continue
                 if len(dependency_statuses) == len(dependencies) and all(
                     dependency_statuses[dependency_id] == TaskStatus.DONE.value
                     for dependency_id in dependencies
                 ):
                     ready.append(task)
+            if blocked_events:
+                await session.commit()
             ready.sort(key=lambda task: (-task.depth, task.priority, task.created_at))
-            return ready
+
+        # Persist and broadcast blocked dependency states outside the DB session.
+        for project_id, task_id, agent_id, reason in blocked_events:
+            await event_bus.emit(
+                event_type=EventType.TASK_BLOCKED,
+                project_id=project_id,
+                task_id=task_id,
+                agent_id=agent_id,
+                payload={"reason": reason, "source": "dependency_watchdog"},
+            )
+        return ready
 
     async def _process_task(self, task_id: str) -> None:
         self._active_tasks.add(task_id)

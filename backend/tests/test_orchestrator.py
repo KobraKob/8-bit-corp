@@ -165,3 +165,34 @@ async def test_recovered_root_does_not_duplicate_delegated_children():
         root = await session.get(Task, root_id)
         assert len(children) == 1
         assert root.status == TaskStatus.IN_PROGRESS.value
+
+
+
+@pytest.mark.asyncio
+async def test_scheduler_marks_tasks_blocked_by_failed_dependencies():
+    await init_db()
+    project_id = generate_id("proj")
+    dependency_id = generate_id("tsk")
+    waiting_id = generate_id("tsk")
+
+    async with async_session_factory() as session:
+        session.add(Project(id=project_id, name="Failed Dependency", brief="Detect blocked work"))
+        session.add(Task(
+            id=dependency_id, project_id=project_id, depth=1, title="Upstream",
+            description="blocked upstream", original_goal="upstream",
+            status=TaskStatus.BLOCKED.value,
+        ))
+        session.add(Task(
+            id=waiting_id, project_id=project_id, depth=1, title="Downstream",
+            description="must not wait forever", original_goal="downstream",
+            status=TaskStatus.ASSIGNED.value, depends_on_json=[dependency_id],
+        ))
+        await session.commit()
+
+    ready = await scheduler._fetch_ready_tasks()
+    assert waiting_id not in {task.id for task in ready}
+
+    async with async_session_factory() as session:
+        waiting = await session.get(Task, waiting_id)
+        assert waiting.status == TaskStatus.BLOCKED.value
+        assert "dependencies did not complete" in waiting.error
