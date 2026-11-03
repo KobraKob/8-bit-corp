@@ -226,6 +226,12 @@ class Scheduler:
                     creator_agent_id=task.assignee_agent_id,
                     subtasks_data=subtask_dicts,
                 )
+                # Cross-department projects convene managers once their
+                # initial work breakdown is available.
+                try:
+                    await convene_project_meeting(task.project_id, reason="automatic")
+                except Exception as meeting_exc:
+                    logger.warning(f"Could not convene project coordination meeting: {meeting_exc}")
                 return
 
             # Recovered manager tasks with existing children should resume integration,
