@@ -4,7 +4,7 @@ from app.db.session import init_db, async_session_factory
 from app.core.config import get_app_settings
 from app.events.event_bus import event_bus
 from app.events.event_types import EventType
-from app.domain.org_model import seed_organization_from_config, hire_dynamic_agent
+from app.domain.org_model import seed_organization_from_config, hire_dynamic_agent, validate_org_config
 from app.db.models import Agent
 from sqlalchemy import select
 
@@ -38,7 +38,9 @@ async def test_event_bus_emit_and_replay():
 @pytest.mark.asyncio
 async def test_org_seeding_and_dynamic_hire():
     await init_db()
-    await seed_organization_from_config()
+    org_config = get_app_settings().org
+    validate_org_config(org_config)
+    await seed_organization_from_config(org_config)
 
     async with async_session_factory() as session:
         result = await session.execute(select(Agent))
@@ -55,6 +57,20 @@ async def test_org_seeding_and_dynamic_hire():
         coo = next((a for a in agents if a.role_key == "coo"), None)
         assert coo is not None
         assert coo.reports_to_agent_id == ceo.id
+
+        by_role = {}
+        for agent in agents:
+            if agent.status == "active":
+                by_role.setdefault(agent.role_key, []).append(agent)
+        assert all(len(by_role.get(key, [])) == role.count for key, role in org_config.roles.items())
+        by_id = {agent.id for agent in agents if agent.status == "active"}
+        for role_key, role in org_config.roles.items():
+            if role.reports_to:
+                manager_id = by_role[role.reports_to][0].id
+                assert all(agent.reports_to_agent_id == manager_id for agent in by_role[role_key])
+            else:
+                assert all(agent.reports_to_agent_id is None for agent in by_role[role_key])
+        assert all(agent.reports_to_agent_id is None or agent.reports_to_agent_id in by_id for agent in agents if agent.status == "active")
 
     # Test dynamic hire
     dynamic_agent = await hire_dynamic_agent(
