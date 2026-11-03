@@ -3,6 +3,7 @@ import { Agent } from '../api/types';
 
 type Player = {
   destroy: () => void;
+  goToAndStop: (value: number, isFrame?: boolean) => void;
 };
 type LottieRuntime = {
   loadAnimation: (options: {
@@ -18,6 +19,52 @@ declare global {
   interface Window {
     lottie?: LottieRuntime;
   }
+}
+
+let lottieRuntimePromise: Promise<LottieRuntime> | null = null;
+let ceoAnimationPromise: Promise<Record<string, unknown>> | null = null;
+
+function loadLottieRuntime(): Promise<LottieRuntime> {
+  if (window.lottie) return Promise.resolve(window.lottie);
+  if (lottieRuntimePromise) return lottieRuntimePromise;
+
+  lottieRuntimePromise = new Promise<LottieRuntime>((resolve, reject) => {
+    let script = document.querySelector<HTMLScriptElement>('script[data-pixel-lottie]');
+    if (!script) {
+      script = document.createElement('script');
+      script.src = '/vendor/lottie.min.js';
+      script.dataset.pixelLottie = 'true';
+      document.head.appendChild(script);
+    }
+    const onLoad = () => {
+      if (window.lottie) resolve(window.lottie);
+      else reject(new Error('Local avatar player did not initialize.'));
+    };
+    const onError = () => reject(new Error('Local avatar player is unavailable.'));
+    script.addEventListener('load', onLoad, { once: true });
+    script.addEventListener('error', onError, { once: true });
+    if (window.lottie) resolve(window.lottie);
+  }).catch((error) => {
+    lottieRuntimePromise = null;
+    throw error;
+  });
+
+  return lottieRuntimePromise;
+}
+
+function loadCeoAnimation(): Promise<Record<string, unknown>> {
+  if (!ceoAnimationPromise) {
+    ceoAnimationPromise = fetch('/avatars/ceo-with-wavy-hair-and-a-beard.json')
+      .then((response) => {
+        if (!response.ok) throw new Error('CEO animation could not be loaded.');
+        return response.json() as Promise<Record<string, unknown>>;
+      })
+      .catch((error) => {
+        ceoAnimationPromise = null;
+        throw error;
+      });
+  }
+  return ceoAnimationPromise;
 }
 
 const SKIN_TONES = ['var(--pixel-avatar-skin-1)', 'var(--pixel-avatar-skin-2)', 'var(--pixel-avatar-skin-3)', 'var(--pixel-avatar-skin-4)', 'var(--pixel-avatar-skin-5)'];
@@ -76,42 +123,32 @@ export const AgentAvatar: React.FC<{ agent: Agent; size?: number; className?: st
     let cancelled = false;
     let player: Player | undefined;
 
-    const loadPlayer = async () => {
-      if (!window.lottie) {
-        await new Promise<void>((resolve, reject) => {
-          const existing = document.querySelector<HTMLScriptElement>('script[data-pixel-lottie]');
-          if (existing) {
-            existing.addEventListener('load', () => resolve(), { once: true });
-            existing.addEventListener('error', () => reject(new Error('Local avatar player unavailable')), { once: true });
-            return;
-          }
-          const script = document.createElement('script');
-          script.src = '/vendor/lottie.min.js';
-          script.dataset.pixelLottie = 'true';
-          script.onload = () => resolve();
-          script.onerror = () => reject(new Error('Local avatar player unavailable'));
-          document.head.appendChild(script);
-        });
-      }
-      const response = await fetch('/avatars/ceo-with-wavy-hair-and-a-beard.json');
-      if (!response.ok) throw new Error('CEO animation could not be loaded');
-      const animationData = await response.json();
-      if (cancelled || !containerRef.current || !window.lottie) return;
+    const mountAnimation = async () => {
+      const [runtime, animationData] = await Promise.all([
+        loadLottieRuntime(),
+        loadCeoAnimation(),
+      ]);
+      if (cancelled || !containerRef.current) return;
+
       const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-      player = window.lottie.loadAnimation({
+      player = runtime.loadAnimation({
         container: containerRef.current,
         renderer: 'svg',
         loop: !reduceMotion,
         autoplay: !reduceMotion,
         animationData,
       });
+      if (reduceMotion) player.goToAndStop(0, true);
       setAnimationReady(true);
     };
 
-    void loadPlayer().catch(() => setAnimationReady(false));
+    void mountAnimation().catch(() => {
+      if (!cancelled) setAnimationReady(false);
+    });
     return () => {
       cancelled = true;
       player?.destroy();
+      setAnimationReady(false);
     };
   }, [isCeo]);
 
