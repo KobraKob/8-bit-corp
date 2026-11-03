@@ -17,7 +17,7 @@ export const LiveActivityHUD: React.FC = () => {
   const {
     projects, activeProjectId, taskTree, agents, events,
     fetchTaskTree, fetchProjects, setActiveDrawerTab, networkStatus,
-    taskTreeUpdatedAt, taskTreeError,
+    taskTreeUpdatedAt, taskTreeError, taskTreeLoading,
   } = useAppStore();
   const [isRefreshing, setIsRefreshing] = useState(false);
   const activeProject = projects.find((project) => project.id === activeProjectId);
@@ -27,6 +27,7 @@ export const LiveActivityHUD: React.FC = () => {
   const working = flatTasks.filter((task) => ['in_progress', 'integrating'].includes(task.status));
   const review = flatTasks.filter((task) => ['in_review', 'reviewing', 'revision_requested'].includes(task.status)).length;
   const blocked = flatTasks.filter((task) => ['blocked', 'failed'].includes(task.status)).length;
+  const hasProgressSnapshot = Boolean(taskTreeUpdatedAt) || taskTree.length > 0;
   const percent = total ? Math.round(done / total * 100) : 0;
   const firstTask = working[0];
   const firstAgent = firstTask ? agents.find((agent) => agent.id === firstTask.assignee_agent_id) : undefined;
@@ -50,12 +51,14 @@ export const LiveActivityHUD: React.FC = () => {
         </div>
         <div className="activity-project-progress">
           <div className="activity-progress-label">
-            <span>{done} of {total} work packages complete</span>
-            <strong>{percent}%</strong>
+            <span>{hasProgressSnapshot ? done + ' of ' + total + ' work packages complete' : taskTreeLoading ? 'Loading work packages' : 'Progress unavailable'}</span>
+            <strong>{hasProgressSnapshot ? percent + '%' : '—'}</strong>
           </div>
-          <div className="app-progress" role="progressbar" aria-label="Project completion" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}>
-            <span style={{ transform: 'scaleX(' + (percent / 100) + ')' }} />
-          </div>
+          {hasProgressSnapshot ? (
+            <div className="app-progress" role="progressbar" aria-label="Project completion" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}>
+              <span style={{ transform: 'scaleX(' + (percent / 100) + ')' }} />
+            </div>
+          ) : <div className="app-progress app-progress-unknown" aria-label="Project progress unavailable" />}
         </div>
       </div>
 
@@ -78,6 +81,7 @@ export const LiveActivityHUD: React.FC = () => {
         <span className={'activity-connection activity-connection-' + networkStatus}>
           {networkStatus === 'connected' ? 'Live updates' : networkStatus === 'offline' ? 'Offline snapshot' : networkStatus === 'degraded' ? 'Sync unavailable' : 'Connecting'}
         </span>
+        <button type="button" className="activity-open-board" onClick={() => setActiveDrawerTab('kanban')}>Open board</button>
         <button type="button" className="activity-refresh" onClick={() => void refresh()} disabled={isRefreshing || networkStatus === 'offline'} aria-label="Refresh project activity">
           <RefreshCw size={14} />
           <span>{isRefreshing ? 'Syncing' : 'Refresh'}</span>
@@ -86,7 +90,7 @@ export const LiveActivityHUD: React.FC = () => {
       {taskTreeError && (
         <div className="activity-warning" role="status">
           {networkStatus === 'offline' ? 'Connection unavailable. ' : 'Could not refresh. '}
-          Showing the last saved snapshot
+          {taskTree.length > 0 || taskTreeUpdatedAt ? 'Showing the last saved snapshot' : 'No successful snapshot is available yet.'}
           {taskTreeUpdatedAt ? ' from ' + new Date(taskTreeUpdatedAt).toLocaleTimeString() : ''}.
         </div>
       )}
