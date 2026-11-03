@@ -78,11 +78,22 @@ async def office_action(req: OfficeAction):
             if task.status not in {TaskStatus.PENDING.value, TaskStatus.ASSIGNED.value} or task.lease_token:
                 raise HTTPException(status_code=409, detail="Only queued tasks without an active worker lease can be handed off")
             previous_agent_id = task.assignee_agent_id
-            task.assignee_agent_id = target.id
-            task.status = TaskStatus.ASSIGNED.value
-            task.lease_token = None
-            task.lease_expires_at = None
-            task.next_retry_at = None
+            claim_update = await session.execute(
+                update(Task)
+                .where(
+                    Task.id == task.id,
+                    Task.status.in_([TaskStatus.PENDING.value, TaskStatus.ASSIGNED.value]),
+                    Task.lease_token.is_(None),
+                )
+                .values(
+                    assignee_agent_id=target.id,
+                    status=TaskStatus.ASSIGNED.value,
+                    next_retry_at=None,
+                )
+                .execution_options(synchronize_session=False)
+            )
+            if claim_update.rowcount != 1:
+                raise HTTPException(status_code=409, detail="Task was claimed while the handoff was being processed")
             row = Message(
                 id=str(uuid4()), task_id=task.id, from_agent_id=actor.id,
                 to_agent_id=target.id, kind="task_handoff",
