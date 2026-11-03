@@ -44,6 +44,27 @@ class _SessionFactoryProxy:
 async_session_factory = _SessionFactoryProxy()
 
 
+async def _migrate_sqlite_schema(conn) -> None:
+    """Auto-migrate schema changes for SQLite databases to ensure columns match models."""
+    # 1. agents.api_key
+    res = await conn.execute(text("PRAGMA table_info(agents);"))
+    agent_cols = [r[1] for r in res.fetchall()]
+    if agent_cols and "api_key" not in agent_cols:
+        await conn.execute(text("ALTER TABLE agents ADD COLUMN api_key VARCHAR(255);"))
+
+    # 2. llm_calls.key_alias
+    res = await conn.execute(text("PRAGMA table_info(llm_calls);"))
+    llm_cols = [r[1] for r in res.fetchall()]
+    if llm_cols and "key_alias" not in llm_cols:
+        await conn.execute(text("ALTER TABLE llm_calls ADD COLUMN key_alias VARCHAR(100) DEFAULT 'default' NOT NULL;"))
+
+    # 3. daily_usage.key_alias
+    res = await conn.execute(text("PRAGMA table_info(daily_usage);"))
+    usage_cols = [r[1] for r in res.fetchall()]
+    if usage_cols and "key_alias" not in usage_cols:
+        await conn.execute(text("ALTER TABLE daily_usage ADD COLUMN key_alias VARCHAR(100) DEFAULT 'default' NOT NULL;"))
+
+
 async def init_db(engine_override=None) -> None:
     """Initialize database tables and set SQLite WAL mode if applicable."""
     target_engine = engine_override or _engine
@@ -52,6 +73,8 @@ async def init_db(engine_override=None) -> None:
             await conn.execute(text("PRAGMA journal_mode=WAL;"))
             await conn.execute(text("PRAGMA synchronous=NORMAL;"))
         await conn.run_sync(Base.metadata.create_all)
+        if "sqlite" in str(target_engine.url):
+            await _migrate_sqlite_schema(conn)
 
 
 @asynccontextmanager
