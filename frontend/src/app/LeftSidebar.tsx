@@ -11,7 +11,7 @@ const statusLabel: Record<string, string> = {
 export const LeftSidebar: React.FC<{ onOpenIntake: () => void }> = ({ onOpenIntake }) => {
   const {
     projects, activeProjectId, setActiveProject, fetchTaskTree,
-    setActiveDrawerTab, agents, networkStatus,
+    setActiveDrawerTab, agents, networkStatus, projectsLoading, projectsError,
   } = useAppStore();
   const [quickTitle, setQuickTitle] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -54,11 +54,13 @@ export const LeftSidebar: React.FC<{ onOpenIntake: () => void }> = ({ onOpenInta
       </div>
 
       <div className="app-sidebar-projects app-scroll">
-        {projects.length === 0 ? (
+        {projectsLoading && projects.length === 0 ? (
+          <div className="app-sidebar-empty" role="status"><div className="app-skeleton app-skeleton-line" /><div className="app-skeleton app-skeleton-wide" /><span>Loading projects…</span></div>
+        ) : projects.length === 0 ? (
           <div className="app-sidebar-empty">
             <Briefcase size={19} />
             <strong>No projects yet</strong>
-            <p>Create a workspace to start assigning work to the team.</p>
+            <p>{projectsError ? 'Project list unavailable: ' + projectsError : 'Create a workspace to start assigning work to the team.'}</p>
             <button type="button" className="app-button app-button-primary" onClick={onOpenIntake}>Create project</button>
           </div>
         ) : projects.map((project) => {
