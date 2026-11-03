@@ -29,6 +29,11 @@ class WorkspaceManager:
             (proj_dir / folder).mkdir(parents=True, exist_ok=True)
         return proj_dir
 
+    def provision_agent_directories(self, project_id: str, agent_ids: List[str]) -> List[Path]:
+        """Create one independent working directory for each agent in a project."""
+        self.get_project_dir(project_id)
+        return [self.get_agent_dir(project_id, agent_id) for agent_id in agent_ids]
+
     def get_agent_dir(self, project_id: str, agent_id: str) -> Path:
         """Get a private working directory for one agent inside one project."""
         safe_agent_id = "".join(c for c in agent_id if c.isalnum() or c in ("-", "_"))
@@ -61,6 +66,9 @@ class WorkspaceManager:
         return self.resolve_safe_path(project_id, f"agents/{safe_agent_id}/{private_path}")
 
     def write_agent_file(self, project_id: str, agent_id: str, relative_path: str, content: str) -> str:
+        normalized = relative_path.replace("\\\\", "/")
+        if normalized == "artifacts" or normalized.startswith("artifacts/"):
+            raise SecurityViolationError("Use create_artifact to register deliverables in the shared artifacts directory.")
         target = self.resolve_agent_path(project_id, agent_id, relative_path)
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(content, encoding="utf-8")
