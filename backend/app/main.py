@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
+from sqlalchemy import text
 from fastapi.middleware.cors import CORSMiddleware
 
 load_dotenv()
@@ -16,7 +17,7 @@ from app.api.usage import router as usage_router
 from app.api.ws import router as ws_router
 from app.core.config import get_app_settings
 from app.core.logging import logger
-from app.db.session import init_db
+from app.db.session import async_session_factory, init_db
 from app.domain.org_model import seed_organization_from_config
 from app.orchestrator.scheduler import scheduler
 
@@ -71,4 +72,14 @@ async def health_check():
 
 @app.get("/api/ready", tags=["system"])
 async def readiness_check():
-    return {"ready": True, "scheduler_running": scheduler.running}
+    try:
+        async with async_session_factory() as session:
+            await session.execute(text("SELECT 1"))
+    except Exception as exc:
+        logger.error(f"Readiness database check failed: {exc}")
+        raise HTTPException(status_code=503, detail="Database is not ready") from exc
+
+    if not scheduler.running:
+        raise HTTPException(status_code=503, detail="Scheduler is not running")
+
+    return {"ready": True, "database": "ok", "scheduler_running": True}
