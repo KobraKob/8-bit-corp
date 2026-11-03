@@ -7,7 +7,7 @@ from app.agents.runtime import AgentRuntime
 from app.core.config import get_app_settings
 from app.core.ids import generate_id
 from app.core.logging import logger
-from app.db.models import Agent, Task
+from app.db.models import Agent, Project, Task
 from app.db.session import async_session_factory
 from app.domain.task_fsm import TaskFSM, TaskStatus
 from app.events.event_bus import event_bus
@@ -27,6 +27,7 @@ class Scheduler:
         self._worker_task: Optional[asyncio.Task] = None
         self._active_tasks: Set[str] = set()
         self._worker_tasks: Set[asyncio.Task] = set()
+        self._workers_by_task: Dict[str, asyncio.Task] = {}
         self._paused_projects: Set[str] = set()
 
     async def recover_stuck_tasks_on_startup(self) -> None:
@@ -47,6 +48,9 @@ class Scheduler:
         if self.running:
             return
         self.running = True
+        async with async_session_factory() as session:
+            paused_ids = await session.scalars(select(Project.id).where(Project.status == "paused"))
+            self._paused_projects = set(paused_ids.all())
         await self.recover_stuck_tasks_on_startup()
         self._worker_task = asyncio.create_task(self._scheduler_loop())
         logger.info("Scheduler background loop started.")
@@ -99,6 +103,13 @@ class Scheduler:
                 to_cancel.extend(children_ids)
 
             await session.commit()
+
+        workers = [self._workers_by_task.get(cancelled_task_id) for _, cancelled_task_id, _ in cancelled]
+        active_workers = [worker for worker in workers if worker and not worker.done()]
+        for worker in active_workers:
+            worker.cancel()
+        if active_workers:
+            await asyncio.gather(*active_workers, return_exceptions=True)
 
         for project_id, cancelled_task_id, agent_id in cancelled:
             await event_bus.emit(
@@ -320,6 +331,12 @@ class Scheduler:
         finally:
             self._active_tasks.discard(task_id)
 
+    def _on_worker_done(self, task_id: str, worker: asyncio.Task) -> None:
+        self._worker_tasks.discard(worker)
+        if self._workers_by_task.get(task_id) is worker:
+            self._workers_by_task.pop(task_id, None)
+        self._active_tasks.discard(task_id)
+
     async def _scheduler_loop(self) -> None:
         concurrency = self.settings.settings.global_concurrency
 
@@ -332,7 +349,8 @@ class Scheduler:
                         self._active_tasks.add(task.id)
                         worker = asyncio.create_task(self._process_task(task.id))
                         self._worker_tasks.add(worker)
-                        worker.add_done_callback(self._worker_tasks.discard)
+                        self._workers_by_task[task.id] = worker
+                        worker.add_done_callback(lambda done, task_id=task.id: self._on_worker_done(task_id, done))
 
                 await asyncio.sleep(0.5)
             except asyncio.CancelledError:
