@@ -1,68 +1,157 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useAppStore } from '../state/useAppStore';
 import { TaskTreeNode } from '../api/types';
+import { AgentAvatar } from '../components/AgentAvatar';
+import {
+  AlertCircle, CheckCircle2, Clock3, Layers, RefreshCw, ShieldAlert, XCircle,
+} from 'lucide-react';
+
+type Column = {
+  key: string;
+  title: string;
+  statuses: string[];
+  icon: React.ReactNode;
+};
+
+const COLUMNS: Column[] = [
+  { key: 'queue', title: 'Queue', statuses: ['pending', 'assigned'], icon: <Clock3 size={14} /> },
+  { key: 'working', title: 'Working', statuses: ['in_progress', 'integrating'], icon: <RefreshCw size={14} /> },
+  { key: 'review', title: 'Review', statuses: ['in_review', 'reviewing', 'revision_requested'], icon: <ShieldAlert size={14} /> },
+  { key: 'attention', title: 'Attention', statuses: ['blocked', 'failed'], icon: <AlertCircle size={14} /> },
+  { key: 'closed', title: 'Closed', statuses: ['done', 'cancelled'], icon: <CheckCircle2 size={14} /> },
+];
+
+function flattenTree(nodes: TaskTreeNode[]): TaskTreeNode[] {
+  const result: TaskTreeNode[] = [];
+  const visit = (items: TaskTreeNode[]) => items.forEach((item) => {
+    result.push(item);
+    if (item.children?.length) visit(item.children);
+  });
+  visit(nodes);
+  return result;
+}
+
+function labelFor(status: string): string {
+  const labels: Record<string, string> = {
+    pending: 'Pending', assigned: 'Queued', in_progress: 'Working',
+    integrating: 'Integrating', in_review: 'Ready for review',
+    reviewing: 'Reviewing', revision_requested: 'Changes requested',
+    blocked: 'Blocked', failed: 'Failed', done: 'Complete', cancelled: 'Cancelled',
+  };
+  return labels[status] || status.replaceAll('_', ' ');
+}
 
 export const KanbanPanel: React.FC = () => {
-  const { taskTree, setSelectedTask, selectedTaskId } = useAppStore();
+  const {
+    taskTree, setSelectedTask, selectedTaskId, agents,
+    taskTreeLoading, taskTreeError, taskTreeUpdatedAt, fetchTaskTree,
+    activeProjectId, networkStatus, projects,
+  } = useAppStore();
 
-  // Flatten task tree into flat list
-  const allTasks: TaskTreeNode[] = [];
-  function collect(node: TaskTreeNode) {
-    allTasks.push(node);
-    if (node.children) {
-      for (const c of node.children) collect(c);
-    }
+  const allTasks = useMemo(() => flattenTree(taskTree), [taskTree]);
+  const doneCount = allTasks.filter((task) => task.status === 'done').length;
+  const progress = allTasks.length ? Math.round(doneCount / allTasks.length * 100) : 0;
+  const project = projects.find((item) => item.id === activeProjectId);
+
+  if (!activeProjectId) {
+    return <div className="app-empty"><Layers size={24} /><strong>Choose a project</strong><p>Select a project to see its work board.</p></div>;
   }
-  taskTree.forEach(collect);
 
-  const columns = [
-    { key: 'assigned', label: 'Assigned', color: 'border-blue-700 bg-blue-950/20' },
-    { key: 'in_progress', label: 'In Progress', color: 'border-amber-700 bg-amber-950/20' },
-    { key: 'in_review', label: 'In Review', color: 'border-indigo-700 bg-indigo-950/20' },
-    { key: 'reviewing', label: 'Reviewing', color: 'border-violet-700 bg-violet-950/20' },
-    { key: 'done', label: 'Done', color: 'border-emerald-700 bg-emerald-950/20' },
-    { key: 'blocked', label: 'Blocked', color: 'border-rose-700 bg-rose-950/20' },
-  ];
+  if (taskTreeLoading && allTasks.length === 0) {
+    return (
+      <div className="kanban-loading" aria-label="Loading task board">
+        {COLUMNS.slice(0, 3).map((column) => (
+          <div className="kanban-skeleton-column" key={column.key}>
+            <div className="app-skeleton app-skeleton-line" />
+            {[0, 1, 2].map((item) => <div className="kanban-skeleton-card" key={item}><div className="app-skeleton app-skeleton-wide" /><div className="app-skeleton app-skeleton-short" /></div>)}
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (allTasks.length === 0) {
+    return (
+      <div className="app-empty">
+        <Layers size={24} />
+        <strong>No tasks on this board</strong>
+        <p>Submit a project brief to the CEO. Delegated work will appear in its status column.</p>
+        {taskTreeError && <button className="app-button" type="button" onClick={() => void fetchTaskTree()} disabled={networkStatus === 'offline'}>Retry</button>}
+      </div>
+    );
+  }
 
   return (
-    <div className="flex gap-2.5 p-3 overflow-x-auto h-[calc(100vh-140px)]">
-      {columns.map((col) => {
-        const tasksInCol = allTasks.filter((t) => t.status === col.key);
-        return (
-          <div
-            key={col.key}
-            className={`flex-1 min-w-[210px] max-w-[260px] rounded-lg border p-2 flex flex-col ${col.color}`}
-          >
-            <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-800 text-xs font-semibold text-slate-300">
-              <span>{col.label}</span>
-              <span className="px-1.5 py-0.5 rounded-full bg-slate-800 text-[10px] text-slate-400">
-                {tasksInCol.length}
-              </span>
-            </div>
-
-            <div className="flex flex-col gap-2 overflow-y-auto">
-              {tasksInCol.map((task) => (
-                <div
-                  key={task.id}
-                  onClick={() => setSelectedTask(task.id)}
-                  className={`p-2 rounded border text-xs cursor-pointer transition-all ${
-                    selectedTaskId === task.id
-                      ? 'border-sky-500 bg-sky-950/60'
-                      : 'border-slate-800 bg-slate-900/80 hover:border-slate-700'
-                  }`}
-                >
-                  <div className="font-medium text-slate-200">{task.title}</div>
-                  <div className="text-[11px] text-slate-400 mt-1 line-clamp-2">{task.description}</div>
-                  <div className="mt-2 text-[10px] text-slate-500 flex justify-between font-mono">
-                    <span>Depth {task.depth}</span>
-                    <span>{task.tokens_used} tok</span>
-                  </div>
-                </div>
-              ))}
-            </div>
+    <section className="kanban-panel app-panel">
+      <header className="kanban-header">
+        <div className="kanban-heading">
+          <div>
+            <h2>Work board</h2>
+            <p>{project?.name || 'Project tasks'}</p>
           </div>
-        );
-      })}
-    </div>
+          <button type="button" className="app-icon-button" onClick={() => void fetchTaskTree()} disabled={taskTreeLoading} aria-label="Refresh work board">
+            <RefreshCw size={15} />
+          </button>
+        </div>
+        <div className="kanban-progress-copy">
+          <strong>{progress}% complete</strong>
+          <span>{doneCount} of {allTasks.length} work packages</span>
+        </div>
+        <div className="app-progress" role="progressbar" aria-label="Project completion" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress}>
+          <span style={{ transform: 'scaleX(' + (progress / 100) + ')' }} />
+        </div>
+        {taskTreeError && (
+          <div className="task-stale-notice" role="status">
+            {networkStatus === 'offline' ? 'Offline. ' : 'Refresh failed. '}
+            Showing the last successful board snapshot
+            {taskTreeUpdatedAt ? ' from ' + new Date(taskTreeUpdatedAt).toLocaleTimeString() : ''}.
+          </div>
+        )}
+      </header>
+
+      <div className="kanban-board" aria-label="Project task status columns">
+        {COLUMNS.map((column) => {
+          const tasks = allTasks.filter((task) => column.statuses.includes(task.status));
+          return (
+            <section className="kanban-column" key={column.key} aria-labelledby={'kanban-' + column.key}>
+              <header className="kanban-column-header">
+                <span className="kanban-column-icon">{column.icon}</span>
+                <h3 id={'kanban-' + column.key}>{column.title}</h3>
+                <span className="kanban-count">{tasks.length}</span>
+              </header>
+              <div className="kanban-column-content">
+                {tasks.length === 0 ? (
+                  <p className="kanban-column-empty">Nothing here</p>
+                ) : tasks.map((task) => {
+                  const agent = agents.find((item) => item.id === task.assignee_agent_id);
+                  const selected = selectedTaskId === task.id;
+                  return (
+                    <button
+                      type="button"
+                      key={task.id}
+                      className={'kanban-task' + (selected ? ' kanban-task-selected' : '')}
+                      onClick={() => setSelectedTask(task.id)}
+                      aria-pressed={selected}
+                    >
+                      <span className="kanban-task-top">
+                        <span className={'kanban-task-status kanban-task-status-' + task.status}>{labelFor(task.status)}</span>
+                        {task.priority <= 2 && <span className="kanban-priority">Priority {task.priority}</span>}
+                      </span>
+                      <strong className="kanban-task-title">{task.title}</strong>
+                      <span className="kanban-task-description">{task.description}</span>
+                      <span className="kanban-task-footer">
+                        {agent ? <><AgentAvatar agent={agent} size={22} /><span>{agent.display_name}</span></> : <span>Unassigned</span>}
+                        <span className="kanban-task-depth">Level {task.depth}</span>
+                      </span>
+                      {task.error && <span className="kanban-task-error"><XCircle size={12} /> {task.error}</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+          );
+        })}
+      </div>
+    </section>
   );
 };
