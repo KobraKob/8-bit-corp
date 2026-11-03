@@ -69,14 +69,14 @@ export const ProjectIntakeModal: React.FC<{ isOpen: boolean; onClose: () => void
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-      <div className="bg-slate-900 border border-slate-800 rounded-xl max-w-lg w-full p-5 flex flex-col space-y-4 shadow-2xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/90 p-4">
+      <div role="dialog" aria-modal="true" aria-labelledby="project-intake-title" className="bg-slate-900 border border-slate-800 rounded-xl max-w-lg w-full p-5 flex flex-col space-y-4">
         <div className="flex items-center justify-between pb-3 border-b border-slate-800">
           <div className="flex items-center gap-2">
             <Briefcase size={18} className="text-sky-400" />
-            <h2 className="text-sm font-bold text-slate-100">Intake New Project / Client Brief</h2>
+            <h2 id="project-intake-title" className="text-sm font-medium text-slate-100">New project</h2>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white">
+          <button onClick={onClose} className="text-slate-400 hover:text-white" aria-label="Close project intake">
             <X size={16} />
           </button>
         </div>
