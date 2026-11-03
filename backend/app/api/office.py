@@ -3,6 +3,7 @@ from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
+from sqlalchemy import update
 
 from app.db.models import Agent, Message, Task
 from app.db.session import async_session_factory
