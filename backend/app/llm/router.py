@@ -1,3 +1,4 @@
+import asyncio
 import os
 import time
 from typing import Any, Callable, Dict, List, Optional, Type, TypeVar
@@ -146,7 +147,11 @@ class LLMRouter:
                 )
 
                 try:
-                    resp = await provider.chat(req)
+                    # Bound every provider request. The runtime's task-level
+                    # timeout is checked between calls; without a provider-level
+                    # timeout a single stalled HTTP request can occupy a worker
+                    # indefinitely and prevent all project progress.
+                    resp = await asyncio.wait_for(provider.chat(req), timeout=45.0)
                     latency = (time.monotonic() - start_time) * 1000.0
 
                     # Log successful call to DB
