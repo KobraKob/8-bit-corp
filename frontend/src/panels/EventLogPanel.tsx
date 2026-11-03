@@ -38,7 +38,7 @@ export const EventLogPanel: React.FC = () => {
             <div
               key={evt.id}
               onClick={() => setSelectedEventId(isSelected ? null : evt.id)}
-              className={`p-2 rounded border cursor-pointer transition-all ${
+              className={`p-2 rounded border cursor-pointer transition-colors ${
                 isSelected ? 'border-sky-500 bg-slate-900' : 'border-slate-800/80 bg-slate-950/60 hover:border-slate-700'
               }`}
             >
