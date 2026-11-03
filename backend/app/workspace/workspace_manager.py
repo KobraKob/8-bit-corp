@@ -25,7 +25,47 @@ class WorkspaceManager:
         safe_id = "".join(c for c in project_id if c.isalnum() or c in ("-", "_"))
         proj_dir = (self.root_path / safe_id).resolve()
         proj_dir.mkdir(parents=True, exist_ok=True)
+        for folder in ('agents', 'shared', 'artifacts'):
+            (proj_dir / folder).mkdir(parents=True, exist_ok=True)
         return proj_dir
+
+    def get_agent_dir(self, project_id: str, agent_id: str) -> Path:
+        """Get a private working directory for one agent inside one project."""
+        safe_agent_id = "".join(c for c in agent_id if c.isalnum() or c in ("-", "_"))
+        if not safe_agent_id:
+            raise SecurityViolationError("Agent id is not a valid workspace identifier.")
+        agent_dir = self.resolve_safe_path(project_id, f"agents/{safe_agent_id}")
+        agent_dir.mkdir(parents=True, exist_ok=True)
+        return agent_dir
+
+    def resolve_agent_path(self, project_id: str, agent_id: str, relative_path: str) -> Path:
+        """Resolve an agent-private path, or an explicit shared/artifact path."""
+        normalized = relative_path.replace("\\", "/").lstrip("/")
+        if normalized.startswith("shared/"):
+            return self.resolve_safe_path(project_id, normalized)
+        if normalized.startswith("artifacts/"):
+            return self.resolve_safe_path(project_id, normalized)
+        safe_agent_id = "".join(c for c in agent_id if c.isalnum() or c in ("-", "_"))
+        return self.resolve_safe_path(project_id, f"agents/{safe_agent_id}/{normalized}")
+
+    def write_agent_file(self, project_id: str, agent_id: str, relative_path: str, content: str) -> str:
+        target = self.resolve_agent_path(project_id, agent_id, relative_path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content, encoding="utf-8")
+        return str(target.relative_to(self.get_project_dir(project_id)).as_posix())
+
+    def read_agent_file(self, project_id: str, agent_id: str, relative_path: str) -> str:
+        target = self.resolve_agent_path(project_id, agent_id, relative_path)
+        if not target.exists() or not target.is_file():
+            raise FileNotFoundError(f"File not found in agent workspace: {relative_path}")
+        return target.read_text(encoding="utf-8")
+
+    def list_agent_files(self, project_id: str, agent_id: str, subpath: str = "") -> List[str]:
+        target = self.resolve_agent_path(project_id, agent_id, subpath or ".")
+        if not target.exists() or not target.is_dir():
+            return []
+        project_dir = self.get_project_dir(project_id)
+        return sorted(str(path.relative_to(project_dir).as_posix()) for path in target.rglob("*") if path.is_file())
 
     def resolve_safe_path(self, project_id: str, relative_path: str) -> Path:
         """Resolve a relative path inside project directory, blocking directory traversal and absolute escapes."""
