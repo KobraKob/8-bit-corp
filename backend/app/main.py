@@ -8,6 +8,7 @@ from sqlalchemy import select, text
 load_dotenv()
 
 from app.api.agents import router as agents_router
+from app.api.company import router as company_router
 from app.api.approvals import router as approvals_router
 from app.api.artifacts import router as artifacts_router
 from app.api.events import router as events_router
@@ -66,6 +67,7 @@ app.add_middleware(
 app.include_router(projects_router)
 app.include_router(tasks_router)
 app.include_router(agents_router)
+app.include_router(company_router)
 app.include_router(artifacts_router)
 app.include_router(approvals_router)
 app.include_router(usage_router)
