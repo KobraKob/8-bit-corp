@@ -3,7 +3,14 @@ import {
 } from './types';
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api').replace(/\/+$/, '');
-const REQUEST_TIMEOUT_MS = 10000;
+const REQUEST_TIMEOUT_MS = 8000;
+const inFlightRequests = new Set<AbortController>();
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('offline', () => {
+    inFlightRequests.forEach((controller) => controller.abort());
+  });
+}
 
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   if (typeof navigator !== 'undefined' && !navigator.onLine) {
@@ -12,6 +19,7 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  inFlightRequests.add(controller);
   const url = API_BASE + endpoint;
   const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
 
@@ -24,11 +32,11 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     if (res.status === 204) return undefined as T;
     return await res.json() as T;
   } catch (error) {
-    if (error instanceof Error && error.name === 'AbortError') {
-      throw new Error('The server did not respond within 10 seconds. Retry when it is reachable.');
-    }
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
       throw new Error('Connection lost. Showing the last successful data.');
+    }
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error('The server did not respond within 8 seconds. Retry when it is reachable.');
     }
     if (error instanceof TypeError) {
       throw new Error('Cannot reach the Pixel Corp server. Check that the backend is running.');
@@ -36,6 +44,7 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     throw error;
   } finally {
     window.clearTimeout(timeout);
+    inFlightRequests.delete(controller);
   }
 }
 
