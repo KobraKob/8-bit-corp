@@ -125,7 +125,7 @@ TOOL_DEFINITIONS: Dict[str, Dict[str, Any]] = {
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "path": {"type": "string", "description": "Relative file path inside the project workspace"},
+                    "path": {"type": "string", "description": "Relative path inside your private agent folder; prefix shared/ for a deliberate handoff"},
                     "content": {"type": "string", "description": "File contents to write"},
                 },
                 "required": ["path", "content"],
@@ -140,7 +140,7 @@ TOOL_DEFINITIONS: Dict[str, Dict[str, Any]] = {
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "path": {"type": "string", "description": "Relative file path inside the workspace"},
+                    "path": {"type": "string", "description": "Relative path inside your private folder; use shared/ or artifacts/ to read shared project files"},
                 },
                 "required": ["path"],
             },
@@ -150,11 +150,11 @@ TOOL_DEFINITIONS: Dict[str, Dict[str, Any]] = {
         "type": "function",
         "function": {
             "name": "list_files",
-            "description": "List existing files in the project workspace directory.",
+            "description": "List files in your private project folder. Use shared/ or artifacts/ to inspect shared project files.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "subpath": {"type": "string", "description": "Subdirectory to list (default empty for root)", "default": ""},
+                    "subpath": {"type": "string", "description": "Relative subdirectory in your private folder; shared/ or artifacts/ selects the shared project area", "default": ""},
                 },
             },
         },
@@ -183,7 +183,7 @@ TOOL_DEFINITIONS: Dict[str, Dict[str, Any]] = {
         "type": "function",
         "function": {
             "name": "run_code",
-            "description": "Execute code in a restricted local subprocess (python or node); not a security boundary for untrusted production workloads.",
+            "description": "Execute code in a restricted local subprocess (python or node) with your private project folder as the working directory; not a security boundary for untrusted production workloads.",
             "parameters": {
                 "type": "object",
                 "properties": {
