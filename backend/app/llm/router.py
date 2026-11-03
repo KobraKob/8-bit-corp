@@ -24,6 +24,7 @@ from app.llm.provider import (
 from app.llm.types import ChatMessage, ChatRequest, ChatResponse
 
 T = TypeVar("T", bound=BaseModel)
+LLM_REQUEST_TIMEOUT_SECONDS = 45.0
 
 
 class LLMRouter:
@@ -151,7 +152,7 @@ class LLMRouter:
                     # timeout is checked between calls; without a provider-level
                     # timeout a single stalled HTTP request can occupy a worker
                     # indefinitely and prevent all project progress.
-                    resp = await asyncio.wait_for(provider.chat(req), timeout=45.0)
+                    resp = await asyncio.wait_for(provider.chat(req), timeout=LLM_REQUEST_TIMEOUT_SECONDS)
                     latency = (time.monotonic() - start_time) * 1000.0
 
                     # Log successful call to DB
