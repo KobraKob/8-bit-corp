@@ -174,8 +174,12 @@ class LLMRouter:
 
                 except Exception as exc:
                     latency = (time.monotonic() - start_time) * 1000.0
-                    last_error = str(exc)
-                    logger.error(f"LLM call failed with key '{key_alias}' on model {model_name}: {exc}")
+                    last_error = (
+                        f"Provider request timed out after {LLM_REQUEST_TIMEOUT_SECONDS:.0f}s"
+                        if isinstance(exc, asyncio.TimeoutError)
+                        else str(exc)
+                    )
+                    logger.error(f"LLM call failed with key '{key_alias}' on model {model_name}: {last_error}")
 
                     # If 429 rate limit error, put this specific key on cooldown
                     if "429" in str(exc) or "rate_limit" in str(exc).lower():
