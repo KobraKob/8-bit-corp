@@ -24,6 +24,8 @@ async def isolated_test_db(tmp_path):
 
     # Reset active tasks & paused sets in scheduler
     sched_module.scheduler._active_tasks.clear()
+    sched_module.scheduler._scheduled_tasks.clear()
+    sched_module.scheduler._worker_tasks.clear()
     sched_module.scheduler._paused_projects.clear()
 
     yield
