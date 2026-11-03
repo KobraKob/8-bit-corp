@@ -174,61 +174,143 @@ export class ProceduralPixelArtPack implements AssetPack {
     });
   }
 
-  // Generates a customized 16x16 agent character texture based on role metadata
+  // Generates a distinct 24px pixel portrait from each agent's stable identity.
   createCustomAgentTexture(
     scene: Phaser.Scene,
     key: string,
     shirtColor: string,
     skinTone: number,
     level: number,
-    isCeo: boolean
+    isCeo: boolean,
+    hairStyle = 1,
+    accessory = 'id_badge',
+    agentId = key
   ): string {
     if (scene.textures.exists(key)) return key;
 
-    const skinTones = ['#fde047', '#fed7aa', '#fbcfe8', '#d4a373', '#8d5b4c'];
-    const skinHex = skinTones[(skinTone - 1) % skinTones.length] || '#fed7aa';
-
-    const canvas = scene.textures.createCanvas(key, 16, 16);
+    const rootStyle = typeof window !== 'undefined' ? window.getComputedStyle(document.documentElement) : null;
+    const token = (name: string, fallback: string) => rootStyle?.getPropertyValue(name).trim() || fallback;
+    const skinPalette = [
+      token('--pixel-avatar-skin-1', '#e9b78e'),
+      token('--pixel-avatar-skin-2', '#d99b70'),
+      token('--pixel-avatar-skin-3', '#a96d4f'),
+      token('--pixel-avatar-skin-4', '#704634'),
+      token('--pixel-avatar-skin-5', '#f2c6a0'),
+    ];
+    const hairPalette = [
+      token('--pixel-avatar-hair-1', '#2d211e'),
+      token('--pixel-avatar-hair-2', '#493126'),
+      token('--pixel-avatar-hair-3', '#171b24'),
+      token('--pixel-avatar-hair-4', '#8a4d2d'),
+      token('--pixel-avatar-hair-5', '#c1b8a8'),
+      token('--pixel-avatar-hair-6', '#512d54'),
+    ];
+    const seed = Array.from(agentId).reduce((value, char) => (value * 31 + char.charCodeAt(0)) >>> 0, 7);
+    const skin = skinPalette[Math.max(0, skinTone - 1) % skinPalette.length];
+    const hair = hairPalette[(seed + hairStyle) % hairPalette.length];
+    const style = Math.max(1, hairStyle + (seed % 3));
+    const canvas = scene.textures.createCanvas(key, 24, 24);
     if (!canvas) return 'char_base_template';
 
     const ctx = canvas.getContext();
     ctx.imageSmoothingEnabled = false;
 
-    // Hair
-    ctx.fillStyle = '#451a03';
-    ctx.fillRect(4, 1, 8, 3);
-
-    // Face / Head
-    ctx.fillStyle = skinHex;
-    ctx.fillRect(5, 3, 6, 4);
-
-    // Eyes
-    ctx.fillStyle = '#0f172a';
-    ctx.fillRect(6, 4, 1, 1);
-    ctx.fillRect(9, 4, 1, 1);
-
-    // Shirt / Department Uniform
+    // Neck and shirt
+    ctx.fillStyle = skin;
+    ctx.fillRect(10, 13, 4, 4);
     ctx.fillStyle = shirtColor;
-    ctx.fillRect(4, 7, 8, 5);
+    ctx.fillRect(5, 16, 14, 8);
+    ctx.fillRect(3, 19, 3, 5);
+    ctx.fillRect(18, 19, 3, 5);
 
-    // Manager Tie or CEO Crown
-    if (isCeo) {
-      // Golden Crown on head
-      ctx.fillStyle = '#f59e0b';
-      ctx.fillRect(5, 0, 6, 2);
-      ctx.fillRect(5, 0, 1, 1);
-      ctx.fillRect(7, 0, 2, 1);
-      ctx.fillRect(10, 0, 1, 1);
-    } else if (level <= 3) {
-      // Tie
-      ctx.fillStyle = '#ef4444';
-      ctx.fillRect(7, 7, 2, 4);
+    // Face and ears
+    ctx.fillStyle = skin;
+    ctx.fillRect(7, 6, 10, 9);
+    ctx.fillRect(6, 9, 1, 3);
+    ctx.fillRect(17, 9, 1, 3);
+
+    // Hair silhouettes vary by seeded style.
+    ctx.fillStyle = hair;
+    if (style % 6 === 1) {
+      ctx.fillRect(6, 4, 12, 4);
+      ctx.fillRect(5, 6, 3, 4);
+      ctx.fillRect(16, 6, 3, 4);
+      ctx.fillRect(8, 3, 7, 2);
+    } else if (style % 6 === 2) {
+      ctx.fillRect(6, 3, 12, 5);
+      ctx.fillRect(5, 6, 3, 9);
+      ctx.fillRect(16, 6, 3, 9);
+      ctx.fillRect(7, 2, 4, 2);
+      ctx.fillRect(14, 2, 3, 2);
+    } else if (style % 6 === 3) {
+      ctx.fillRect(6, 5, 12, 4);
+      ctx.fillRect(5, 7, 3, 3);
+      ctx.fillRect(16, 7, 3, 3);
+      ctx.fillRect(7, 3, 3, 3);
+      ctx.fillRect(11, 2, 4, 3);
+      ctx.fillRect(16, 4, 2, 3);
+    } else if (style % 6 === 4) {
+      ctx.fillRect(6, 4, 12, 4);
+      ctx.fillRect(5, 7, 3, 8);
+      ctx.fillRect(16, 7, 3, 8);
+      ctx.fillRect(8, 3, 8, 2);
+      ctx.fillRect(10, 7, 4, 2);
+    } else if (style % 6 === 5) {
+      ctx.fillRect(6, 5, 12, 4);
+      ctx.fillRect(5, 7, 3, 5);
+      ctx.fillRect(16, 7, 3, 5);
+      ctx.fillRect(9, 1, 6, 4);
+      ctx.fillRect(8, 3, 8, 2);
+    } else {
+      ctx.fillRect(6, 4, 12, 5);
+      ctx.fillRect(5, 7, 3, 8);
+      ctx.fillRect(16, 7, 3, 8);
+      ctx.fillRect(8, 2, 8, 3);
     }
 
-    // Pants
-    ctx.fillStyle = '#1e293b';
-    ctx.fillRect(5, 12, 2, 4);
-    ctx.fillRect(9, 12, 2, 4);
+    // Eyes, nose and expression
+    ctx.fillStyle = token('--color-paper-3', '#17202a');
+    ctx.fillRect(9, 10, 2, 1);
+    ctx.fillRect(14, 10, 2, 1);
+    ctx.fillStyle = token('--pixel-avatar-line', '#633f32');
+    ctx.fillRect(11, 13, 3, 1);
+
+    // Distinct beard and eyewear details
+    if (seed % 4 === 0 || accessory.includes('beard')) {
+      ctx.fillStyle = hair;
+      ctx.fillRect(8, 13, 2, 2);
+      ctx.fillRect(14, 13, 2, 2);
+      ctx.fillRect(10, 14, 5, 2);
+    }
+    if (seed % 7 === 0 || accessory.includes('glasses')) {
+      ctx.strokeStyle = token('--color-paper-3', '#17202a');
+      ctx.lineWidth = 1;
+      ctx.strokeRect(8, 9, 4, 3);
+      ctx.strokeRect(13, 9, 4, 3);
+      ctx.fillRect(12, 10, 1, 1);
+    }
+
+    // Accessories and role signals
+    if (isCeo) {
+      ctx.fillStyle = token('--color-accent', '#e5b84b');
+      ctx.fillRect(7, 1, 10, 2);
+      ctx.fillRect(7, 0, 2, 2);
+      ctx.fillRect(11, 0, 2, 2);
+      ctx.fillRect(15, 0, 2, 2);
+    } else if (level <= 3 || accessory.includes('tie')) {
+      ctx.fillStyle = token('--color-accent', '#e5b84b');
+      ctx.fillRect(11, 16, 2, 5);
+      ctx.fillRect(10, 16, 4, 1);
+    } else if (accessory.includes('head') || seed % 9 === 0) {
+      ctx.strokeStyle = token('--color-cool', '#82a9d6');
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(12, 9, 9, Math.PI, Math.PI * 2);
+      ctx.stroke();
+    } else {
+      ctx.fillStyle = token('--color-cool', '#82a9d6');
+      ctx.fillRect(17, 17, 2, 3);
+    }
 
     canvas.refresh();
     return key;
