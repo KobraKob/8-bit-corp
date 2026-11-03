@@ -15,7 +15,7 @@ export const Shell: React.FC = () => {
   const gameRef = useRef<Phaser.Game | null>(null);
   const [isIntakeOpen, setIsIntakeOpen] = useState(false);
   const {
-    fetchProjects, fetchApprovals, fetchUsage, fetchAgents, fetchKeys,
+    fetchProjects, fetchApprovals, fetchUsage, fetchAgents, fetchKeys, fetchEvents,
     isDrawerOpen, setDrawerOpen, networkStatus, projects, activeProjectId,
     setNetworkStatus,
   } = useAppStore();
@@ -33,6 +33,7 @@ export const Shell: React.FC = () => {
       void fetchUsage();
       void fetchAgents();
       void fetchKeys();
+      void fetchEvents();
       void useAppStore.getState().fetchTaskTree();
     };
 
@@ -67,6 +68,7 @@ export const Shell: React.FC = () => {
         void useAppStore.getState().fetchProjects();
         void useAppStore.getState().fetchApprovals();
         void useAppStore.getState().fetchUsage();
+        void useAppStore.getState().fetchEvents();
       }
     }, 30000);
 
