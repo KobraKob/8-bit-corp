@@ -1,7 +1,7 @@
 import { useAppStore } from './useAppStore';
 
-const apiBase = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api').replace(/\/+$/, '');
-const defaultSocketUrl = apiBase.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:').replace(/\/api$/, '') + '/ws';
+const apiBase = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api').replace(/\\/+$/, '');
+const defaultSocketUrl = apiBase.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:').replace(/\\/api$/, '') + '/ws';
 
 class WebSocketClient {
   private ws: WebSocket | null = null;
@@ -14,6 +14,10 @@ class WebSocketClient {
 
   connect() {
     this.shouldReconnect = true;
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      useAppStore.getState().setNetworkStatus('offline');
+      return;
+    }
     if (this.isConnecting || (this.ws && this.ws.readyState === WebSocket.OPEN)) return;
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
@@ -25,6 +29,7 @@ class WebSocketClient {
       this.ws.onopen = () => {
         this.isConnecting = false;
         this.reconnectInterval = 1000;
+        useAppStore.getState().setNetworkStatus('connected');
         const { lastEventId, activeProjectId } = useAppStore.getState();
         this.ws?.send(JSON.stringify({ type: 'resume', last_event_id: lastEventId, project_id: activeProjectId }));
       };
@@ -32,26 +37,29 @@ class WebSocketClient {
         try {
           useAppStore.getState().handleIncomingEvent(JSON.parse(event.data));
         } catch (error) {
-          console.error('[PixelCorp WS] Failed to process event:', error);
+          console.error('[Pixel Corp] Could not process live event:', error);
         }
       };
       this.ws.onclose = () => {
         this.isConnecting = false;
         this.ws = null;
+        useAppStore.getState().setNetworkStatus(
+          typeof navigator !== 'undefined' && !navigator.onLine ? 'offline' : 'degraded'
+        );
         this.scheduleReconnect();
       };
       this.ws.onerror = () => this.ws?.close();
     } catch (error) {
-      console.error('[PixelCorp WS] Connection attempt failed:', error);
       this.isConnecting = false;
+      useAppStore.getState().setNetworkStatus('degraded');
       this.scheduleReconnect();
     }
   }
 
   private scheduleReconnect() {
-    if (!this.shouldReconnect || this.reconnectTimer) return;
+    if (!this.shouldReconnect || this.reconnectTimer || (typeof navigator !== 'undefined' && !navigator.onLine)) return;
     const delay = this.reconnectInterval;
-    this.reconnectInterval = Math.min(this.reconnectInterval * 1.5, this.maxReconnectInterval);
+    this.reconnectInterval = Math.min(this.reconnectInterval * 1.7, this.maxReconnectInterval);
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       this.connect();
