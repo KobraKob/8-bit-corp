@@ -22,12 +22,13 @@ export const ProjectIntakeModal: React.FC<{ isOpen: boolean; onClose: () => void
   isOpen,
   onClose,
 }) => {
-  const { fetchProjects, setActiveProject } = useAppStore();
+  const { fetchProjects, setActiveProject, networkStatus } = useAppStore();
 
   const [name, setName] = useState('');
   const [clientName, setClientName] = useState('');
   const [brief, setBrief] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
@@ -36,6 +37,7 @@ export const ProjectIntakeModal: React.FC<{ isOpen: boolean; onClose: () => void
     if (!name.trim() || !brief.trim()) return;
 
     setIsSubmitting(true);
+    setSubmitError(null);
     try {
       const proj = await apiClient.createProject({
         name,
@@ -54,6 +56,7 @@ export const ProjectIntakeModal: React.FC<{ isOpen: boolean; onClose: () => void
       await setActiveProject(proj.id);
       onClose();
     } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : 'Could not create this project.');
       console.error('Failed to create project', err);
     } finally {
       setIsSubmitting(false);
@@ -89,7 +92,7 @@ export const ProjectIntakeModal: React.FC<{ isOpen: boolean; onClose: () => void
                 key={p.name}
                 type="button"
                 onClick={() => applyPlaybook(p)}
-                className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-[11px] text-slate-200 transition-all"
+                className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-[11px] text-slate-200 transition-colors"
               >
                 {p.name}
               </button>
@@ -97,7 +100,8 @@ export const ProjectIntakeModal: React.FC<{ isOpen: boolean; onClose: () => void
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="flex flex-col space-y-3">
+        {submitError && <p className="app-inline-error" role="alert">{submitError}</p>}
+      <form onSubmit={handleSubmit} className="flex flex-col space-y-3">
           <div className="flex flex-col gap-1">
             <label className="text-[11px] font-medium text-slate-300">Project Name</label>
             <input
@@ -143,11 +147,11 @@ export const ProjectIntakeModal: React.FC<{ isOpen: boolean; onClose: () => void
             </button>
             <button
               type="submit"
-              disabled={isSubmitting}
+              disabled={isSubmitting || networkStatus === 'offline'}
               className="px-4 py-1.5 rounded bg-sky-600 hover:bg-sky-500 text-white font-medium text-xs flex items-center gap-1.5 transition-all"
             >
               <Sparkles size={13} />
-              {isSubmitting ? 'Transmitting to CEO...' : 'Submit to CEO'}
+              {networkStatus === 'offline' ? 'Offline' : isSubmitting ? 'Sending to CEO...' : 'Submit to CEO'}
             </button>
           </div>
         </form>
