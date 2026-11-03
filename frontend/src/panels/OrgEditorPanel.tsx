@@ -5,7 +5,7 @@ import { AgentAvatar } from '../components/AgentAvatar';
 import { UserPlus, Users, Sparkles } from 'lucide-react';
 
 export const OrgEditorPanel: React.FC = () => {
-  const { agents, fetchAgents, setSelectedAgent } = useAppStore();
+  const { agents, fetchAgents, setSelectedAgent, networkStatus } = useAppStore();
 
   const [title, setTitle] = useState('');
   const [department, setDepartment] = useState('Special Projects');
@@ -88,6 +88,7 @@ export const OrgEditorPanel: React.FC = () => {
 
       {/* Dynamic Agent Hire Form */}
       {hireError && <p className='app-inline-error' role='alert'>{hireError}</p>}
+      {networkStatus === 'offline' && <p className='app-inline-note'>Offline. Hiring agents requires a server connection.</p>}
       <form onSubmit={handleHire} className="p-3 rounded-lg border border-slate-800 bg-slate-900/60 flex flex-col space-y-3">
         <span className="font-semibold text-slate-200 flex items-center gap-1.5 pb-2 border-b border-slate-800">
           <UserPlus size={14} className="text-emerald-400" /> Hire New Dynamic Agent
@@ -152,7 +153,7 @@ export const OrgEditorPanel: React.FC = () => {
 
         <button
           type="submit"
-          disabled={isHiring}
+          disabled={isHiring || networkStatus === 'offline'}
           className="mt-1 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-medium flex items-center justify-center gap-1.5 transition-colors text-xs"
         >
           <Sparkles size={13} />
