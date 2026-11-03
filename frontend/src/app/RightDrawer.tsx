@@ -39,7 +39,11 @@ function TabButton({ tab, active, count, onClick }: {
       type="button"
       onClick={onClick}
       className={'app-drawer-tab' + (active ? ' app-drawer-tab-active' : '')}
-      aria-current={active ? 'page' : undefined}
+      role="tab"
+      id={'drawer-tab-' + tab.id}
+      aria-selected={active}
+      aria-controls="workspace-panel"
+      tabIndex={active ? 0 : -1}
     >
       <Icon size={14} />
       <span>{tab.label}</span>
@@ -51,6 +55,20 @@ function TabButton({ tab, active, count, onClick }: {
 export const RightDrawer: React.FC = () => {
   const { activeDrawerTab, setActiveDrawerTab, approvals, setDrawerOpen } = useAppStore();
   const pendingApprovals = approvals.filter((approval) => approval.status === 'pending').length;
+  const allTabs = [...WORK_TABS, ...COMPANY_TABS];
+  const handleTabKeys = (event: React.KeyboardEvent<HTMLElement>) => {
+    const current = allTabs.findIndex((tab) => tab.id === activeDrawerTab);
+    let next = current;
+    if (event.key === 'ArrowRight') next = (current + 1) % allTabs.length;
+    else if (event.key === 'ArrowLeft') next = (current - 1 + allTabs.length) % allTabs.length;
+    else if (event.key === 'Home') next = 0;
+    else if (event.key === 'End') next = allTabs.length - 1;
+    else return;
+    event.preventDefault();
+    const nextTab = allTabs[next];
+    setActiveDrawerTab(nextTab.id);
+    window.requestAnimationFrame(() => document.getElementById('drawer-tab-' + nextTab.id)?.focus());
+  };
 
   return (
     <aside className="app-drawer" aria-label="Workspace tools">
@@ -64,7 +82,7 @@ export const RightDrawer: React.FC = () => {
         </button>
       </header>
 
-      <nav className="app-drawer-nav" aria-label="Workspace sections">
+      <nav className="app-drawer-nav" role="tablist" aria-label="Workspace tools" onKeyDown={handleTabKeys}>
         <div className="app-drawer-group">
           <span className="app-drawer-group-title">Project work</span>
           <div className="app-drawer-tabs">
@@ -89,7 +107,7 @@ export const RightDrawer: React.FC = () => {
         </div>
       </nav>
 
-      <div className="app-drawer-content app-scroll">
+      <div className="app-drawer-content app-scroll" id="workspace-panel" role="tabpanel" aria-labelledby={"drawer-tab-" + activeDrawerTab} tabIndex={0}>
         {activeDrawerTab === 'tree' && <TaskTreePanel />}
         {activeDrawerTab === 'kanban' && <KanbanPanel />}
         {activeDrawerTab === 'inspector' && <AgentInspectorPanel />}
