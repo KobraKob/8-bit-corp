@@ -64,7 +64,7 @@ Copy the environment template:
 ```bash
 cp .env.example .env
 ```
-*(Optional)* Add your `GROQ_API_KEY` to `.env`. Tests and offline mode run on `MockProvider` without any API keys or network.
+The template starts in offline mock mode. Set `LLM_PROVIDER=groq` and add your `GROQ_API_KEY` to `.env` when you want live model calls.
 
 ### 2. Frontend Setup
 ```bash
@@ -94,7 +94,7 @@ Open [http://localhost:5173](http://localhost:5173) in your browser.
 The backend test suite runs offline without API keys using `MockProvider`:
 
 ```bash
-# Run full backend test suite (26 tests)
+# Run the full backend test suite
 python -m pytest backend/tests
 ```
 

@@ -14,6 +14,7 @@ async def websocket_event_stream(websocket: WebSocket):
     await websocket.accept()
     subscriber_queue = await event_bus.subscribe()
     outbound_queue: asyncio.Queue[EventPayload] = asyncio.Queue()
+    replay_complete = asyncio.Event()
 
     async def client_listener():
         """Queue replay events; the main coroutine remains the only socket writer."""
@@ -24,16 +25,17 @@ async def websocket_event_stream(websocket: WebSocket):
                     message = json.loads(data)
                     if message.get("type") == "resume":
                         last_id = max(0, int(message.get("last_event_id", 0)))
-                        project_id = message.get("project_id")
-                        missed = await event_bus.get_events_after(last_event_id=last_id, project_id=project_id)
+                        missed = await event_bus.get_events_after(last_event_id=last_id)
                         for event in missed:
                             await outbound_queue.put(event)
+                        replay_complete.set()
                 except (TypeError, ValueError, json.JSONDecodeError) as parse_error:
                     logger.warning("Invalid WebSocket message: %s", parse_error)
         except WebSocketDisconnect:
             return
 
     async def relay_live_events():
+        await replay_complete.wait()
         while True:
             event = await subscriber_queue.get()
             await outbound_queue.put(event)

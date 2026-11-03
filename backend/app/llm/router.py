@@ -80,7 +80,7 @@ class LLMRouter:
             tier_cfg = self.settings.models.tiers.get("smart")
 
         models_to_try = [tier_cfg.model] + tier_cfg.fallbacks if tier_cfg else ["mock-model"]
-        provider_name = tier_cfg.provider if tier_cfg else "mock"
+        provider_name = os.getenv("LLM_PROVIDER", tier_cfg.provider if tier_cfg else self.settings.models.default_provider).strip()
         provider = self.get_provider(provider_name)
 
         # Inspect calling agent for manager priority & dedicated custom API key
@@ -106,7 +106,7 @@ class LLMRouter:
             )
 
             # Check rate limiting for this specific key
-            if self.override_provider:
+            if self.override_provider or provider_name == "mock":
                 acquired = True
             else:
                 acquired = await rate_limiter.acquire(
