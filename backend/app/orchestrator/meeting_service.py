@@ -46,6 +46,9 @@ async def convene_project_meeting(project_id: str, reason: str = "manual", trigg
                 return existing
         tasks = (await session.scalars(select(Task).where(Task.project_id == project_id))).all()
         agents = (await session.scalars(select(Agent).where(Agent.status == "active"))).all()
+        # Release the read transaction before manager model calls. LLM usage
+        # accounting writes to the same database through its own session.
+        await session.commit()
         agent_by_id = {agent.id: agent for agent in agents}
         departments = sorted({
             agent_by_id[task.assignee_agent_id].department
@@ -208,13 +211,15 @@ async def convene_project_meeting(project_id: str, reason: str = "manual", trigg
                     agent_id=ceo.id,
                 )
                 if synthesis.decisions:
+                    valid_task_ids = {task.id for task in tasks}
+                    valid_manager_ids = {agent.id for agent in attendee_agents}
                     decisions = [{
                         "decision": item.decision,
                         "action": item.action,
-                        "task_id": item.task_id,
+                        "task_id": item.task_id if item.task_id in valid_task_ids else None,
                         "task_title": next((task.title for task in tasks if task.id == item.task_id), None),
-                        "owner_department": item.owner_department,
-                        "accountable_manager_id": item.accountable_manager_id,
+                        "owner_department": item.owner_department if item.owner_department in departments else "Cross-functional",
+                        "accountable_manager_id": item.accountable_manager_id if item.accountable_manager_id in valid_manager_ids else (ceo.id if ceo else None),
                         "status": "open",
                     } for item in synthesis.decisions]
                 discussion.append({
