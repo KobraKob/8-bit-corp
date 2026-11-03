@@ -14,12 +14,11 @@ export const Shell: React.FC = () => {
   const gameRef = useRef<Phaser.Game | null>(null);
 
   const [isIntakeOpen, setIsIntakeOpen] = useState(false);
-  const { fetchProjects, fetchAgents, fetchApprovals, fetchUsage } = useAppStore();
+  const { fetchProjects, fetchApprovals, fetchUsage } = useAppStore();
 
   useEffect(() => {
     // Initial fetch of application state
     fetchProjects();
-    fetchAgents();
     fetchApprovals();
     fetchUsage();
 
@@ -44,10 +43,15 @@ export const Shell: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (!officeContainerRef.current || gameRef.current) return;
+    let cancelled = false;
 
-    // Initialize Phaser 3 Pixel Office Game
-    const config: Phaser.Types.Core.GameConfig = {
+    // Load the org chart before creating the scene. Desk placement depends on agent departments.
+    const initializeOffice = async () => {
+      await useAppStore.getState().fetchAgents();
+      if (cancelled || !officeContainerRef.current || gameRef.current) return;
+
+      // Initialize Phaser Pixel Office Game
+      const config: Phaser.Types.Core.GameConfig = {
       type: Phaser.AUTO,
       parent: officeContainerRef.current,
       width: officeContainerRef.current.clientWidth || 800,
@@ -66,9 +70,13 @@ export const Shell: React.FC = () => {
       },
     };
 
-    gameRef.current = new Phaser.Game(config);
+      gameRef.current = new Phaser.Game(config);
+    };
+
+    void initializeOffice();
 
     return () => {
+      cancelled = true;
       gameRef.current?.destroy(true);
       gameRef.current = null;
     };
