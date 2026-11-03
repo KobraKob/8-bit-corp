@@ -53,6 +53,7 @@ def test_each_agent_gets_a_private_directory_inside_its_project(tmp_path: Path):
 
     ws.write_agent_file(project_id, "agent_one", "drafts/plan.md", "Private plan")
     assert ws.read_agent_file(project_id, "agent_one", "drafts/plan.md") == "Private plan"
+    assert ws.list_agent_files(project_id, "agent_one") == ["drafts/plan.md"]
     with pytest.raises(FileNotFoundError):
         ws.read_agent_file(project_id, "agent_two", "drafts/plan.md")
 
@@ -73,3 +74,7 @@ def test_agent_workspace_rejects_path_traversal(tmp_path: Path):
         ws.write_agent_file("project_safe", "agent_safe", "../outside.txt", "blocked")
     with pytest.raises(SecurityViolationError):
         ws.read_agent_file("project_safe", "agent_safe", "shared/../../outside.txt")
+    with pytest.raises(SecurityViolationError):
+        ws.write_agent_file("project_safe", "agent_safe", "C:/outside.txt", "blocked")
+    with pytest.raises(SecurityViolationError):
+        ws.write_agent_file("project_safe", "agent_safe", "/outside.txt", "blocked")
