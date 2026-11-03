@@ -14,7 +14,7 @@ export const ProjectsPanel: React.FC = () => {
  const counts=useMemo(()=>({all:projects.length,active:projects.filter(p=>p.status==='active').length,paused:projects.filter(p=>p.status==='paused').length,completed:projects.filter(p=>p.status==='completed').length,stopped:projects.filter(p=>p.status==='stopped').length}),[projects]);
  const visible=useMemo(()=>projects.filter(p=>(filter==='all'||p.status===filter)&&`${p.name} ${p.client_name||''} ${p.brief}`.toLowerCase().includes(query.toLowerCase())),[projects,filter,query]);
  const action=async(p:Project,kind:'pause'|'resume'|'stop'|'delete')=>{
-  if(kind==='stop'&&!window.confirm(`Stop "${p.name}"? Queued tasks will be cancelled. This cannot be resumed.`))return;
+  if(kind==='stop'&&!window.confirm(`Stop "${p.name}"? Queued tasks and active workers will be cancelled. This cannot be resumed.`))return;
   if(kind==='delete'&&!window.confirm(`Permanently delete "${p.name}" and its deliverables? This cannot be undone.`))return;
   setBusy(p.id);setError('');
   try{
@@ -30,6 +30,7 @@ export const ProjectsPanel: React.FC = () => {
   <header className="p-4 border-b border-slate-800 space-y-3">
    <div className="flex justify-between gap-3"><div><h2 className="text-sm font-semibold">Project portfolio</h2><p className="mt-1 text-[11px] text-slate-500">Track work from intake through delivery.</p></div><span className="text-[10px] font-mono text-slate-500">{projects.length} TOTAL</span></div>
    <div className="relative"><Search size={13} className="absolute left-3 top-2.5 text-slate-500"/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search projects or clients" className="w-full rounded-md border border-slate-800 bg-slate-900 py-2 pl-8 pr-3 text-xs outline-none focus:border-sky-500"/></div>
+   <p className="text-[10px] text-slate-500">Pause holds queued work. Active agent steps may finish before the pause takes full effect.</p>
    <div className="flex gap-1 overflow-x-auto pb-1">{filters.map(f=><button key={f.id} onClick={()=>setFilter(f.id)} className={`shrink-0 rounded-md border px-2.5 py-1.5 text-[10px] ${filter===f.id?'border-sky-500/50 bg-sky-500/10 text-sky-300':'border-slate-800 text-slate-400 hover:bg-slate-900'}`}>{f.label}<span className="ml-1.5 text-slate-500">{counts[f.id]}</span></button>)}</div>
   </header>
   {error&&<div role="alert" className="mx-3 mt-3 rounded border border-rose-500/30 bg-rose-500/10 p-2.5 text-[11px] text-rose-300">{error}</div>}
