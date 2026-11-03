@@ -97,8 +97,14 @@ export const OfficeControlPanel: React.FC = () => {
             <div className="grid grid-cols-2 gap-2">
               {visibleEmployees.map((agent) => {
                 const active = events.find((event) => event.agent_id === agent.id);
-                const fresh = active && Date.now() - new Date(active.ts).getTime() < 120000;
-                const status = !fresh ? 'Idle' : active.type === 'agent.thinking' ? 'Thinking' : active.type === 'task.review_requested' || active.type === 'task.submitted' ? 'Reviewing' : active.type === 'task.blocked' || active.type === 'task.failed' ? 'Blocked' : active.type === 'task.done' || active.type === 'task.approved' ? 'Idle' : active.type === 'agent.tool_call' || active.type === 'task.started' ? 'Working' : 'Idle';
+                const status = active && Date.now() - new Date(active.ts).getTime() < 120000
+                  ? active.type === 'agent.thinking' ? 'Thinking'
+                  : active.type === 'task.review_requested' || active.type === 'task.submitted' ? 'Reviewing'
+                  : active.type === 'task.blocked' || active.type === 'task.failed' ? 'Blocked'
+                  : active.type === 'task.done' || active.type === 'task.approved' ? 'Idle'
+                  : active.type === 'agent.tool_call' || active.type === 'task.started' ? 'Working'
+                  : 'Idle'
+                  : 'Idle';
                 return <button key={agent.id} onClick={() => setActorId(agent.id)} className={`rounded-lg border p-2 text-left ${actorId === agent.id ? 'border-cyan-500/70 bg-cyan-500/10' : 'border-slate-800 bg-slate-900/70'}`}>
                   <div className="truncate text-xs font-medium">{agent.display_name}</div><div className="mt-1 truncate text-[10px] text-slate-500">{agent.department}</div>
                   <div className="mt-2 flex items-center gap-1.5 text-[10px]"><span className={`h-1.5 w-1.5 rounded-full ${status === 'Blocked' ? 'bg-rose-400' : status === 'Idle' ? 'bg-slate-500' : 'bg-emerald-400'}`} />{status}</div>
