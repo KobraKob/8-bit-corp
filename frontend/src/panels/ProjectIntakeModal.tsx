@@ -1,159 +1,173 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useAppStore } from '../state/useAppStore';
 import { apiClient } from '../api/client';
 import { X, Briefcase, Sparkles, BookOpen } from 'lucide-react';
 
 const PLAYBOOKS = [
   {
-    name: 'Landing Page & Brand Kit',
-    brief: 'Design and build a responsive retro landing page with SVG logo, typography specs, and clean HTML/CSS components.',
+    name: 'Landing page',
+    brief: 'Design and build a responsive landing page. Include brand direction, accessible layouts, production-ready components, and a concise handoff.',
   },
   {
-    name: 'Full-Stack Web App',
-    brief: 'Develop full-stack web application with REST API endpoints, relational database models, and interactive client UI.',
+    name: 'Full-stack application',
+    brief: 'Plan and build a full-stack application with clear requirements, API contracts, data models, accessible user interface, and tests.',
   },
   {
-    name: 'Investor Pitch & Proposal',
-    brief: 'Draft comprehensive corporate client proposal, milestone breakdown quote, market research slides, and agreement outline.',
+    name: 'Research and proposal',
+    brief: 'Research the market, compare credible alternatives, document assumptions and evidence, and prepare a decision-ready proposal.',
   },
 ];
 
-export const ProjectIntakeModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({
-  isOpen,
-  onClose,
-}) => {
+export const ProjectIntakeModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen, onClose }) => {
+  const dialogRef = useRef<HTMLDivElement>(null);
   const { fetchProjects, setActiveProject, networkStatus } = useAppStore();
-
   const [name, setName] = useState('');
   const [clientName, setClientName] = useState('');
   const [brief, setBrief] = useState('');
+  const [createdProjectId, setCreatedProjectId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const dialog = dialogRef.current;
+    const focusable = () => dialog?.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    );
+    window.requestAnimationFrame(() => focusable()?.[0]?.focus());
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onClose();
+      }
+      if (event.key !== 'Tab') return;
+      const items = Array.from(focusable() || []);
+      if (!items.length) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      previousFocus?.focus();
+    };
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!name.trim() || !brief.trim()) return;
+  const resetAndClose = () => {
+    setName('');
+    setClientName('');
+    setBrief('');
+    setCreatedProjectId(null);
+    setSubmitError(null);
+    onClose();
+  };
 
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!name.trim() || !brief.trim() || networkStatus === 'offline') return;
     setIsSubmitting(true);
     setSubmitError(null);
-    try {
-      const proj = await apiClient.createProject({
-        name,
-        client_name: clientName || undefined,
-        brief,
-      });
 
-      // Submit root task to CEO
-      await apiClient.submitTask(proj.id, {
-        title: `Deliver: ${proj.name}`,
-        description: proj.brief,
-        acceptance_criteria: ['Complete project deliverable meeting all client specifications'],
-      });
+    try {
+      let projectId = createdProjectId;
+      if (!projectId) {
+        const project = await apiClient.createProject({
+          name: name.trim(),
+          client_name: clientName.trim() || undefined,
+          brief: brief.trim(),
+        });
+        projectId = project.id;
+        setCreatedProjectId(project.id);
+        await fetchProjects();
+        await setActiveProject(project.id);
+      }
+
+      try {
+        await apiClient.submitTask(projectId, {
+          title: 'Deliver: ' + name.trim(),
+          description: brief.trim(),
+          acceptance_criteria: ['Complete the project deliverable to the agreed requirements.'],
+        });
+      } catch (error) {
+        await fetchProjects();
+        await setActiveProject(projectId);
+        setSubmitError('Project created successfully, but the CEO task was not dispatched. Retry here; the project will not be duplicated. Details: ' +
+          (error instanceof Error ? error.message : 'Request failed.'));
+        return;
+      }
 
       await fetchProjects();
-      await setActiveProject(proj.id);
-      onClose();
-    } catch (err) {
-      setSubmitError(err instanceof Error ? err.message : 'Could not create this project.');
-      console.error('Failed to create project', err);
+      await setActiveProject(projectId);
+      resetAndClose();
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : 'Could not create this project.');
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const applyPlaybook = (p: typeof PLAYBOOKS[0]) => {
-    setName(p.name);
-    setBrief(p.brief);
-  };
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/90 p-4">
-      <div role="dialog" aria-modal="true" aria-labelledby="project-intake-title" className="bg-slate-900 border border-slate-800 rounded-xl max-w-lg w-full p-5 flex flex-col space-y-4">
-        <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-          <div className="flex items-center gap-2">
-            <Briefcase size={18} className="text-sky-400" />
-            <h2 id="project-intake-title" className="text-sm font-medium text-slate-100">New project</h2>
+    <div className="project-modal-backdrop">
+      <div ref={dialogRef} className="project-modal" role="dialog" aria-modal="true" aria-labelledby="project-intake-title" aria-describedby="project-intake-description">
+        <header className="project-modal-header">
+          <div>
+            <span className="project-modal-icon"><Briefcase size={17} /></span>
+            <div>
+              <h2 id="project-intake-title">Create project</h2>
+              <p id="project-intake-description">A separate workspace for each client engagement.</p>
+            </div>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white" aria-label="Close project intake">
+          <button type="button" className="app-icon-button" onClick={resetAndClose} aria-label="Close project intake">
             <X size={16} />
           </button>
-        </div>
+        </header>
 
-        {/* Reusable Playbooks */}
-        <div className="flex flex-col gap-1.5">
-          <label className="text-[11px] font-semibold text-slate-400 flex items-center gap-1">
-            <BookOpen size={12} /> Fast-Start Playbooks
-          </label>
-          <div className="flex flex-wrap gap-1.5">
-            {PLAYBOOKS.map((p) => (
-              <button
-                key={p.name}
-                type="button"
-                onClick={() => applyPlaybook(p)}
-                className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-[11px] text-slate-200 transition-colors"
-              >
-                {p.name}
+        <section className="project-playbooks">
+          <label><BookOpen size={13} /> Start from a brief</label>
+          <div>
+            {PLAYBOOKS.map((playbook) => (
+              <button key={playbook.name} type="button" onClick={() => { setName(playbook.name); setBrief(playbook.brief); }}>
+                {playbook.name}
               </button>
             ))}
           </div>
-        </div>
+        </section>
 
-        {submitError && <p className="app-inline-error" role="alert">{submitError}</p>}
-      <form onSubmit={handleSubmit} className="flex flex-col space-y-3">
-          <div className="flex flex-col gap-1">
-            <label className="text-[11px] font-medium text-slate-300">Project Name</label>
-            <input
-              type="text"
-              required
-              placeholder="e.g. Pixel Cyberpunk Landing Page"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="p-2 rounded bg-slate-950 border border-slate-800 text-slate-200 text-xs focus:outline-none focus:border-sky-500"
-            />
+        {submitError && <div className="app-error" role="alert">{submitError}</div>}
+        {createdProjectId && <p className="app-inline-note">Project already exists. Retrying will only dispatch its initial task.</p>}
+
+        <form className="project-modal-form" onSubmit={handleSubmit}>
+          <div>
+            <label htmlFor="project-name">Project name</label>
+            <input id="project-name" value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. Customer portal redesign" required disabled={Boolean(createdProjectId)} />
           </div>
-
-          <div className="flex flex-col gap-1">
-            <label className="text-[11px] font-medium text-slate-300">Client / Organization Name (Optional)</label>
-            <input
-              type="text"
-              placeholder="e.g. Acme Corp"
-              value={clientName}
-              onChange={(e) => setClientName(e.target.value)}
-              className="p-2 rounded bg-slate-950 border border-slate-800 text-slate-200 text-xs focus:outline-none focus:border-sky-500"
-            />
+          <div>
+            <label htmlFor="project-client">Client or organisation <span>Optional</span></label>
+            <input id="project-client" value={clientName} onChange={(event) => setClientName(event.target.value)} placeholder="Client name" disabled={Boolean(createdProjectId)} />
           </div>
-
-          <div className="flex flex-col gap-1">
-            <label className="text-[11px] font-medium text-slate-300">Comprehensive Brief & Requirements</label>
-            <textarea
-              rows={4}
-              required
-              placeholder="Specify requirements, constraints, deliverable expectations..."
-              value={brief}
-              onChange={(e) => setBrief(e.target.value)}
-              className="p-2 rounded bg-slate-950 border border-slate-800 text-slate-200 text-xs focus:outline-none focus:border-sky-500 leading-relaxed font-mono"
-            />
+          <div>
+            <label htmlFor="project-brief">Project brief</label>
+            <textarea id="project-brief" rows={6} value={brief} onChange={(event) => setBrief(event.target.value)} placeholder="Describe the outcome, requirements, constraints, and acceptance criteria." required disabled={Boolean(createdProjectId)} />
           </div>
-
-          <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-3 py-1.5 rounded border border-slate-700 text-slate-300 hover:bg-slate-800 text-xs"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={isSubmitting || networkStatus === 'offline'}
-              className="px-4 py-1.5 rounded bg-sky-600 hover:bg-sky-500 text-white font-medium text-xs flex items-center gap-1.5 transition-colors"
-            >
+          <footer>
+            <button type="button" className="app-button" onClick={resetAndClose}>Cancel</button>
+            <button type="submit" className="app-button app-button-primary" disabled={isSubmitting || networkStatus === 'offline' || !name.trim() || !brief.trim()}>
               <Sparkles size={13} />
-              {networkStatus === 'offline' ? 'Offline' : isSubmitting ? 'Sending to CEO...' : 'Submit to CEO'}
+              {networkStatus === 'offline' ? 'Offline' : isSubmitting ? 'Sending' : createdProjectId ? 'Retry CEO dispatch' : 'Create and dispatch'}
             </button>
-          </div>
+          </footer>
         </form>
       </div>
     </div>
