@@ -6,7 +6,7 @@ import { apiClient } from '../api/client';
 
 export type ActiveDrawerTab =
   | 'tree' | 'kanban' | 'inspector' | 'artifacts' | 'approvals'
-  | 'org' | 'events' | 'keys' | 'projects';
+  | 'org' | 'events' | 'keys' | 'projects' | 'memory' | 'intelligence' | 'meetings';
 
 export type NetworkStatus = 'online' | 'connected' | 'degraded' | 'offline';
 
