@@ -53,11 +53,15 @@ class IntegrationEngine:
                 )).scalars().all()
                 artifact_sections = []
                 for artifact in artifacts:
-                    section = f"#### {artifact.title or artifact.path}\n- Type: {artifact.kind}\n- File: {artifact.path}\n- Summary: {artifact.summary}"
-                    if artifact.kind in ("markdown", "text", "code") and artifact.content:
-                        excerpt = artifact.content[:12000]
+                    section = f"#### {artifact.path.rsplit('/', 1)[-1]}\n- Type: {artifact.kind}\n- File: {artifact.path}\n- Summary: {artifact.summary}"
+                    if artifact.kind in ("markdown", "text", "code"):
+                        try:
+                            artifact_content = workspace_manager.read_file(project_id, artifact.path)
+                        except Exception:
+                            artifact_content = artifact.summary or ""
+                        excerpt = artifact_content[:12000]
                         section += f"\n\n{excerpt}"
-                        if len(artifact.content) > 12000:
+                        if len(artifact_content) > 12000:
                             section += "\n\n[Content excerpt truncated at 12,000 characters.]"
                     artifact_sections.append(section)
                 artifact_lines = "\n\n".join(artifact_sections) or "- No file artifact attached; see completed task notes."

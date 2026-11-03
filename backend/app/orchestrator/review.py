@@ -12,6 +12,7 @@ from app.events.event_bus import event_bus
 from app.events.event_types import EventType
 from app.llm.router import llm_router
 from app.llm.types import ChatMessage
+from app.workspace.workspace_manager import workspace_manager
 
 
 class CriterionEvaluation(BaseModel):
@@ -66,10 +67,14 @@ class ReviewEngine:
             if task.deliverable_artifact_id:
                 art = await session.get(Artifact, task.deliverable_artifact_id)
                 if art:
-                    content_excerpt = (art.content or art.summary or "")[:20000]
+                    try:
+                        artifact_content = workspace_manager.read_file(task.project_id, art.path)
+                    except Exception:
+                        artifact_content = art.summary or "Artifact file unavailable."
+                    content_excerpt = artifact_content[:20000]
                     deliverable_content = (
-                        f"Artifact: {art.title or art.path}\n"
-                        f"Path: {art.path}\nSummary: {art.summary}\n"
+                        f"Artifact: {art.path}\n"
+                        f"Summary: {art.summary}\n"
                         f"Content:\n{content_excerpt}"
                     )
 
