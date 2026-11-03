@@ -26,6 +26,7 @@ class Scheduler:
         self.running = False
         self._worker_task: Optional[asyncio.Task] = None
         self._active_tasks: Set[str] = set()
+        self._worker_tasks: Set[asyncio.Task] = set()
         self._paused_projects: Set[str] = set()
 
     async def recover_stuck_tasks_on_startup(self) -> None:
@@ -58,6 +59,12 @@ class Scheduler:
                 await self._worker_task
             except asyncio.CancelledError:
                 pass
+        workers = list(self._worker_tasks)
+        for worker in workers:
+            worker.cancel()
+        if workers:
+            await asyncio.gather(*workers, return_exceptions=True)
+        self._worker_tasks.clear()
         logger.info("Scheduler stopped.")
 
     async def pause_project(self, project_id: str) -> None:
@@ -323,7 +330,9 @@ class Scheduler:
                     ready_tasks = await self._fetch_ready_tasks()
                     for task in ready_tasks[:available_slots]:
                         self._active_tasks.add(task.id)
-                        asyncio.create_task(self._process_task(task.id))
+                        worker = asyncio.create_task(self._process_task(task.id))
+                        self._worker_tasks.add(worker)
+                        worker.add_done_callback(self._worker_tasks.discard)
 
                 await asyncio.sleep(0.5)
             except asyncio.CancelledError:

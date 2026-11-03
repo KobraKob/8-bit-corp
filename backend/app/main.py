@@ -3,6 +3,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy import text
 
 load_dotenv()
 
@@ -17,7 +18,7 @@ from app.api.usage import router as usage_router
 from app.api.ws import router as ws_router
 from app.core.config import get_app_settings
 from app.core.logging import logger
-from app.db.session import init_db
+from app.db.session import async_session_factory, init_db
 from app.domain.org_model import seed_organization_from_config
 from app.orchestrator.scheduler import scheduler
 
@@ -48,9 +49,9 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 # Mount Routers
@@ -72,9 +73,19 @@ async def health_check():
 
 @app.get("/api/ready", tags=["system"])
 async def readiness_check():
+    try:
+        async with async_session_factory() as session:
+            await session.execute(text("SELECT 1"))
+    except Exception as exc:
+        logger.error(f"Readiness database check failed: {exc}")
+        return JSONResponse(
+            status_code=503,
+            content={"ready": False, "database": "unavailable", "scheduler_running": scheduler.running},
+        )
+
     if not scheduler.running:
         return JSONResponse(
             status_code=503,
-            content={"ready": False, "scheduler_running": False},
+            content={"ready": False, "database": "ok", "scheduler_running": False},
         )
-    return {"ready": True, "scheduler_running": True}
+    return {"ready": True, "database": "ok", "scheduler_running": True}
