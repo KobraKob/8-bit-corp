@@ -355,11 +355,11 @@ export class OfficeScene extends Phaser.Scene {
       } else if ((event.type === 'task.done' || event.type === 'task.approved') && event.agent_id) {
         this.setAgentState(event.agent_id, 'celebrating');
         this.time.delayedCall(1800, () => this.setAgentState(event.agent_id!, 'idle'));
-      } else if (event.type === 'office.meeting.started' && event.agent_id) {
+      } else if ((event.type === 'office.meeting.started' || event.type === 'office.meeting.joined') && event.agent_id) {
         const room = String(event.payload?.room || 'Boardroom');
         const bounds = this.layout.rooms.find((item) => item.name === room)?.bounds;
         if (bounds) this.walkAgentTo(event.agent_id, Math.floor(bounds.x + bounds.width / 2), Math.floor(bounds.y + bounds.height / 2), () => this.setAgentState(event.agent_id!, 'in_meeting'));
-      } else if (event.type === 'office.meeting.ended' && event.agent_id) {
+      } else if ((event.type === 'office.meeting.ended' || event.type === 'office.meeting.left') && event.agent_id) {
         const desk = this.agentSprites.get(event.agent_id)?.desk;
         if (desk) this.walkAgentTo(event.agent_id, desk.tileX, desk.tileY);
       } else if (event.type === 'office.conversation' && event.agent_id) {
@@ -443,11 +443,11 @@ export class OfficeScene extends Phaser.Scene {
       else if (event.type === 'task.review_requested') this.setAgentState(event.agent_id, 'reviewing');
       else if (event.type === 'task.blocked' || event.type === 'task.failed') this.showAgentBubble(event.agent_id, 'bubble_blocked');
       else if (event.type === 'agent.tool_call' || event.type === 'task.started') this.setAgentState(event.agent_id, 'working');
-      else if (event.type === 'office.meeting.started') {
+      else if (event.type === 'office.meeting.started' || event.type === 'office.meeting.joined') {
         const room = this.layout.rooms.find((item) => item.name === String(event.payload?.room || 'Boardroom'));
         if (room) this.walkAgentTo(event.agent_id, Math.floor(room.bounds.x + room.bounds.width / 2), Math.floor(room.bounds.y + room.bounds.height / 2), () => this.setAgentState(event.agent_id!, 'in_meeting'));
       }
-      else if (event.type === 'office.meeting.ended') {
+      else if (event.type === 'office.meeting.ended' || event.type === 'office.meeting.left') {
         const desk = this.agentSprites.get(event.agent_id)?.desk;
         if (desk) this.walkAgentTo(event.agent_id, desk.tileX, desk.tileY);
       }
