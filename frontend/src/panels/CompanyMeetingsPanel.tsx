@@ -23,7 +23,7 @@ export const CompanyMeetingsPanel: React.FC = () => {
       <div className="company-meeting-list">{meetings.map(meeting => <article className="company-meeting-card" key={meeting.id}>
         <header><div><strong>{meeting.title}</strong><span>{new Date(meeting.created_at).toLocaleString()} · {meeting.trigger}</span></div><small><CheckCircle2 size={12}/> {meeting.status}</small></header>
         <h4>Attendees</h4><p>{meeting.attendees.map(a => a.name+' · '+a.department).join(' / ') || 'No managers available'}</p>
-        <h4>Department discussion</h4>{meeting.discussion.map((d,i) => <div className="company-meeting-discussion" key={i}><strong>{d.department}</strong><p>{d.position}</p></div>)}
+        <h4>Department discussion</h4>{meeting.discussion.map((d,i) => <div className="company-meeting-discussion" key={i}><strong>{d.department}{d.manager_name ? ' · '+d.manager_name : ''}</strong><p>{d.position}</p>{d.blockers?.length > 0 && <p><b>Blockers:</b> {d.blockers.join(' · ')}</p>}{d.coordination_requests?.length > 0 && <p><b>Coordination:</b> {d.coordination_requests.join(' · ')}</p>}{d.proposed_actions?.length > 0 && <p><b>Actions:</b> {d.proposed_actions.join(' · ')}</p>}</div>)}
         <h4>Decisions and actions</h4>{meeting.decisions.map((d,i) => <div className="company-meeting-decision" key={i}><strong>{d.decision}</strong><p>{d.action}</p><span>{d.owner_department} · {d.status}</span></div>)}
       </article>)}</div>}
   </section>;
