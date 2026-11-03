@@ -39,9 +39,10 @@ async def search_memory(query: str = "", project_id: Optional[str] = None, limit
     """Return company-wide notes plus notes scoped to the selected project."""
     terms = [term for term in query.lower().split() if term]
     async with async_session_factory() as session:
-        stmt = select(WikiNote).where(
-            or_(WikiNote.project_id.is_(None), WikiNote.project_id == project_id)
-        ).order_by(WikiNote.updated_at.desc()).limit(500)
+        stmt = select(WikiNote)
+        if project_id:
+            stmt = stmt.where(or_(WikiNote.project_id.is_(None), WikiNote.project_id == project_id))
+        stmt = stmt.order_by(WikiNote.updated_at.desc()).limit(500)
         notes = (await session.execute(stmt)).scalars().all()
         if terms:
             notes = [
