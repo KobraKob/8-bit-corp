@@ -3,7 +3,6 @@ from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import select
 
 from app.db.models import Agent, Message, Task
 from app.db.session import async_session_factory
@@ -76,8 +75,8 @@ async def office_action(req: OfficeAction):
             task = await session.get(Task, req.task_id)
             if not task:
                 raise HTTPException(status_code=404, detail="Task not found")
-            if task.status in {TaskStatus.DONE.value, TaskStatus.FAILED.value, TaskStatus.CANCELLED.value}:
-                raise HTTPException(status_code=409, detail="Terminal tasks cannot be handed off")
+            if task.status not in {TaskStatus.PENDING.value, TaskStatus.ASSIGNED.value} or task.lease_token:
+                raise HTTPException(status_code=409, detail="Only queued tasks without an active worker lease can be handed off")
             previous_agent_id = task.assignee_agent_id
             task.assignee_agent_id = target.id
             task.status = TaskStatus.ASSIGNED.value
