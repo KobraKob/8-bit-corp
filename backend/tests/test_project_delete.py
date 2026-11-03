@@ -20,6 +20,7 @@ from app.db.session import async_session_factory
 from app.domain.org_model import seed_organization_from_config
 from app.main import app
 from app.orchestrator.scheduler import scheduler
+from app.workspace.workspace_manager import workspace_manager
 
 
 def new_id():
@@ -83,18 +84,19 @@ async def test_delete_project_removes_all_project_data(tmp_path, monkeypatch):
         ])
         await session.commit()
 
+    monkeypatch.setattr(workspace_manager, "root_path", tmp_path)
     project_dir = tmp_path / project_id
     project_dir.mkdir()
     (project_dir / "deliverable.txt").write_text("temporary")
     monkeypatch.setattr(scheduler, "pause_project", lambda _project_id: _async_noop())
     monkeypatch.setattr(scheduler, "cancel_task_subtree", lambda _task_id: _async_noop())
 
-    # The workspace manager's root is shared by the app; route cleanup is
-    # separately verified by checking that the endpoint returns successfully.
+    # The project workspace must be removed alongside its database records.
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.delete(f"/api/projects/{project_id}")
 
     assert response.status_code == 204
+    assert not project_dir.exists()
     async with async_session_factory() as session:
         assert await session.get(Project, project_id) is None
         assert await session.get(Task, task_id) is None
