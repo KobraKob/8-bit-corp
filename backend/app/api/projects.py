@@ -15,7 +15,7 @@ from app.api.schemas import (
     TaskTreeNode,
 )
 from app.core.ids import generate_id
-from app.db.models import Agent, Approval, Project, Task, WikiNote
+from app.db.models import Agent, Approval, Message, Project, Task, WikiNote
 from app.db.session import async_session_factory
 from app.domain.task_fsm import TaskStatus
 from app.orchestrator.scheduler import scheduler
@@ -118,6 +118,8 @@ async def delete_project(project_id: str):
         if not project: raise HTTPException(status_code=404, detail="Project not found")
         if project.status not in ("completed", "stopped"):
             raise HTTPException(status_code=409, detail="Stop the project before deleting it. This protects running work.")
+        task_ids = select(Task.id).where(Task.project_id == project_id)
+        await session.execute(delete(Message).where(Message.task_id.in_(task_ids)))
         await session.execute(delete(Approval).where(Approval.project_id == project_id))
         await session.execute(delete(WikiNote).where(WikiNote.project_id == project_id))
         await session.delete(project)
