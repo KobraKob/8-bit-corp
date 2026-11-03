@@ -21,6 +21,7 @@ frontend/.dist/
 # App runtime
 workspaces/
 *.sqlite
+*.sqlite-*
 *.sqlite3
 *.db
 *.db-wal
