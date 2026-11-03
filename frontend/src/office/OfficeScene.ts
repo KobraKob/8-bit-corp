@@ -199,16 +199,15 @@ export class OfficeScene extends Phaser.Scene {
 
   private syncAgents(agents: Agent[]) {
     const activeIds = new Set(agents.filter((agent) => agent.status === 'active').map((agent) => agent.id));
-    for (const [id, entry] of this.agentSprites) {
-      if (!activeIds.has(id)) {
-        entry.container.destroy(true);
-        this.agentSprites.delete(id);
-      }
-    }
-    for (const agent of agents) {
-      if (agent.status === 'active' && !this.agentSprites.has(agent.id)) {
-        this.spawnAgents([agent]);
-      }
+    const currentIds = new Set(this.agentSprites.keys());
+    const rosterChanged =
+      activeIds.size !== currentIds.size ||
+      Array.from(activeIds).some((id) => !currentIds.has(id));
+
+    if (rosterChanged) {
+      // Desk positions depend on the complete roster. Rebuild the office so
+      // new hires and returned agents receive their proper department desks.
+      this.scene.restart();
     }
   }
 
