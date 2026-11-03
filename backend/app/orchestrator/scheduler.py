@@ -26,6 +26,8 @@ class Scheduler:
         self.running = False
         self._worker_task: Optional[asyncio.Task] = None
         self._active_tasks: Set[str] = set()
+        # Reserve work before spawning coroutines; create_task() does not run immediately.
+        self._scheduled_tasks: Set[str] = set()
         self._paused_projects: Set[str] = set()
 
     async def recover_stuck_tasks_on_startup(self) -> None:
@@ -118,14 +120,17 @@ class Scheduler:
                 if not deps:
                     ready.append(t)
                 else:
-                    dep_stmt = select(Task.status).where(
-                        (Task.id.in_(deps)) | (Task.title.in_(deps)),
+                    # Dependencies are persisted as task IDs. Titles are not unique.
+                    dep_stmt = select(Task.id, Task.status).where(
+                        Task.id.in_(deps),
                         Task.project_id == t.project_id,
                     )
                     dep_res = await session.execute(dep_stmt)
-                    statuses = dep_res.scalars().all()
-                    # All declared dependencies must be done
-                    if len(statuses) >= len(deps) and all(s == TaskStatus.DONE.value for s in statuses):
+                    dependency_statuses = dict(dep_res.all())
+                    # Missing IDs are unresolved dependencies, never implicitly ready.
+                    if len(dependency_statuses) == len(set(deps)) and all(
+                        dependency_statuses.get(dep_id) == TaskStatus.DONE.value for dep_id in deps
+                    ):
                         ready.append(t)
 
             # Sort: Depth-first bias (higher depth first), then priority (lower number is higher priority), then created_at
@@ -134,16 +139,22 @@ class Scheduler:
 
     async def _process_task(self, task_id: str) -> None:
         self._active_tasks.add(task_id)
+        self._scheduled_tasks.discard(task_id)
         try:
             async with async_session_factory() as session:
-                task = await session.get(Task, task_id)
-                if not task or task.status != TaskStatus.ASSIGNED.value:
+                # Conditional update is the claim: only one worker/process can win it.
+                claim = await session.execute(
+                    update(Task)
+                    .where(Task.id == task_id, Task.status == TaskStatus.ASSIGNED.value)
+                    .values(status=TaskStatus.IN_PROGRESS.value, started_at=datetime.now(timezone.utc))
+                )
+                if claim.rowcount != 1:
+                    await session.rollback()
                     return
-
-                # Mark in_progress
-                task.status = TaskStatus.IN_PROGRESS.value
-                task.started_at = datetime.now(timezone.utc)
                 await session.commit()
+                task = await session.get(Task, task_id)
+                if not task:
+                    return
                 proj_id = task.project_id
                 t_id = task.id
                 agt_id = task.assignee_agent_id
@@ -269,17 +280,25 @@ class Scheduler:
                     await session.commit()
         finally:
             self._active_tasks.discard(task_id)
+            self._scheduled_tasks.discard(task_id)
 
     async def _scheduler_loop(self) -> None:
         concurrency = self.settings.settings.global_concurrency
 
         while self.running:
             try:
-                available_slots = concurrency - len(self._active_tasks)
+                available_slots = concurrency - len(self._active_tasks) - len(self._scheduled_tasks)
                 if available_slots > 0:
                     ready_tasks = await self._fetch_ready_tasks()
-                    for task in ready_tasks[:available_slots]:
+                    for task in ready_tasks:
+                        if available_slots <= 0:
+                            break
+                        if task.id in self._scheduled_tasks or task.id in self._active_tasks:
+                            continue
+                        # Reserve synchronously before the coroutine gets a chance to run.
+                        self._scheduled_tasks.add(task.id)
                         asyncio.create_task(self._process_task(task.id))
+                        available_slots -= 1
 
                 await asyncio.sleep(0.5)
             except asyncio.CancelledError:
