@@ -26,7 +26,7 @@ export class OfficeScene extends Phaser.Scene {
   private panStartY = 0;
   private handledEventIds = new Set<number>();
   private unsubscribeStore?: () => void;
-  private lastReplayEventId: number | null = null;
+  private lastReplayVersion = 0;
   private focusedRoom: string | null = null;
 
   constructor() {
@@ -69,10 +69,10 @@ export class OfficeScene extends Phaser.Scene {
       this.syncAgents(state.agents);
       this.processNewEvents(state.events);
       if (state.selectedRoom && state.selectedRoom !== this.focusedRoom) this.focusRoom(state.selectedRoom);
-      if (state.replayEventId && state.replayEventId !== this.lastReplayEventId) {
+      if (state.replayEventId && state.replayVersion !== this.lastReplayVersion) {
         const replay = state.events.find((event) => event.id === state.replayEventId);
         if (replay) this.replayEvent(replay);
-        this.lastReplayEventId = state.replayEventId;
+        this.lastReplayVersion = state.replayVersion;
       }
     });
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.unsubscribeStore?.());
