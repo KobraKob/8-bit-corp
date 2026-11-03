@@ -40,7 +40,12 @@ export const ProjectsPanel: React.FC = () => {
   const action = async (project: Project, kind: 'pause' | 'resume' | 'stop' | 'delete') => {
     if (networkStatus === 'offline') return;
     if (kind === 'stop' && !window.confirm('Stop "' + project.name + '"? Queued tasks and active workers will be cancelled.')) return;
-    if (kind === 'delete' && !window.confirm('Permanently delete "' + project.name + '" and its deliverables? This cannot be undone.')) return;
+    if (kind === 'delete') {
+      const confirmation = window.prompt(
+        'Permanently delete "' + project.name + '" and ALL related data? This removes tasks, messages, approvals, meetings, project memory, events, LLM usage history, artifacts and workspace files. Type the exact project name to confirm.'
+      );
+      if (confirmation !== project.name) return;
+    }
     setBusy(project.id);
     setError('');
     try {
@@ -127,7 +132,7 @@ export const ProjectsPanel: React.FC = () => {
                 {status === 'active' && <button type="button" className="app-button" disabled={loading || networkStatus === 'offline'} onClick={() => void action(project, 'pause')}><Pause size={12} /> Pause</button>}
                 {status === 'paused' && <button type="button" className="app-button" disabled={loading || networkStatus === 'offline'} onClick={() => void action(project, 'resume')}><Play size={12} /> Resume</button>}
                 {(status === 'active' || status === 'paused') && <button type="button" className="app-button" disabled={loading || networkStatus === 'offline'} onClick={() => void action(project, 'stop')}><Square size={11} /> Stop</button>}
-                {(status === 'completed' || status === 'stopped') && <button type="button" className="app-button project-delete" disabled={loading || networkStatus === 'offline'} onClick={() => void action(project, 'delete')}><Trash2 size={12} /> Delete</button>}
+                {(status === 'completed' || status === 'stopped') && <button type="button" className="app-button project-delete" disabled={loading || networkStatus === 'offline'} onClick={() => void action(project, 'delete')} aria-label={'Permanently delete ' + project.name}><Trash2 size={12} /> {loading ? 'Deleting…' : 'Delete everything'}</button>}
               </div>
             </article>
           );

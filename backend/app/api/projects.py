@@ -15,7 +15,7 @@ from app.api.schemas import (
     TaskTreeNode,
 )
 from app.core.ids import generate_id
-from app.db.models import Agent, Approval, Message, Project, Task, WikiNote
+from app.db.models import Agent, Approval, CompanyMeeting, LLMCall, Message, Project, Task, WikiNote
 from app.db.session import async_session_factory
 from app.domain.task_fsm import TaskStatus
 from app.orchestrator.scheduler import scheduler
@@ -137,20 +137,50 @@ async def stop_project(project_id: str):
 
 @router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_project(project_id: str):
+    # Only terminal projects can be permanently removed. Stop/cancel scheduler
+    # activity before deleting rows so no worker can write into a deleted project.
     async with async_session_factory() as session:
         project = await session.get(Project, project_id)
-        if not project: raise HTTPException(status_code=404, detail="Project not found")
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
         if project.status not in ("completed", "stopped"):
-            raise HTTPException(status_code=409, detail="Stop the project before deleting it. This protects running work.")
+            raise HTTPException(
+                status_code=409,
+                detail="Stop the project before deleting it. This protects running work.",
+            )
+        root_ids = (
+            await session.scalars(
+                select(Task.id).where(Task.project_id == project_id, Task.parent_id.is_(None))
+            )
+        ).all()
+
+    await scheduler.pause_project(project_id)
+    for root_id in root_ids:
+        await scheduler.cancel_task_subtree(root_id)
+
+    async with async_session_factory() as session:
+        project = await session.get(Project, project_id)
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
         task_ids = select(Task.id).where(Task.project_id == project_id)
+
+        # Explicitly remove records without ORM delete cascades or FK constraints.
         await session.execute(delete(Message).where(Message.task_id.in_(task_ids)))
+        await session.execute(delete(LLMCall).where(LLMCall.task_id.in_(task_ids)))
         await session.execute(delete(Approval).where(Approval.project_id == project_id))
+        await session.execute(delete(CompanyMeeting).where(CompanyMeeting.project_id == project_id))
         await session.execute(delete(WikiNote).where(WikiNote.project_id == project_id))
+
+        # Project relationships cascade to tasks, artifacts and events.
         await session.delete(project)
         await session.commit()
+
     scheduler._paused_projects.discard(project_id)
-    project_dir = workspace_manager.get_project_dir(project_id)
-    if project_dir.exists(): shutil.rmtree(project_dir)
+    project_dir = workspace_manager.root_path / "".join(
+        char for char in project_id if char.isalnum() or char in ("-", "_")
+    )
+    if project_dir.exists():
+        shutil.rmtree(project_dir)
     return None
 
 
