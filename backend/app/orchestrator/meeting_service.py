@@ -1,10 +1,34 @@
 from datetime import datetime, timezone
+from typing import List, Optional
+from pydantic import BaseModel, Field
+from app.llm.router import llm_router
+from app.llm.types import ChatMessage
 from sqlalchemy import select
 from app.core.ids import generate_id
 from app.db.models import Agent, CompanyMeeting, Project, Task
 from app.db.session import async_session_factory
 from app.events.event_bus import event_bus
 from app.events.event_types import EventType
+
+
+class ManagerContribution(BaseModel):
+    summary: str = Field(description="Department position on current project health")
+    blockers: List[str] = Field(default_factory=list)
+    coordination_requests: List[str] = Field(default_factory=list)
+    proposed_actions: List[str] = Field(default_factory=list)
+
+
+class MeetingDecisionItem(BaseModel):
+    decision: str
+    action: str
+    owner_department: str
+    task_id: Optional[str] = None
+    accountable_manager_id: Optional[str] = None
+
+
+class MeetingSynthesis(BaseModel):
+    executive_summary: str
+    decisions: List[MeetingDecisionItem] = Field(default_factory=list)
 
 
 async def convene_project_meeting(project_id: str, reason: str = "manual", trigger_task_id: str | None = None):
@@ -97,6 +121,111 @@ async def convene_project_meeting(project_id: str, reason: str = "manual", trigg
                 "accountable_manager_id": ceo.id if ceo else (attendee_agents[0].id if attendee_agents else None),
                 "status": "open",
             })
+
+        # Each attending manager contributes a structured position using the
+        # company's configured model provider. If a provider is unavailable,
+        # the evidence-based department summary above remains as a safe fallback.
+        async def manager_contribution(manager):
+            own_tasks = [
+                task for task in tasks
+                if task.assignee_agent_id in agent_by_id
+                and agent_by_id[task.assignee_agent_id].department == manager.department
+            ]
+            brief = "\\n".join(
+                f"- {task.title}: {task.status}; attempts={task.attempt}; "
+                f"error={task.error or 'none'}; review_notes={'; '.join(task.review_notes_json or [])}"
+                for task in own_tasks[:20]
+            ) or "No work packages assigned to this department."
+            try:
+                result = await llm_router.execute_structured(
+                    tier=manager.model_tier,
+                    messages=[
+                        ChatMessage(role="system", content=manager.system_prompt),
+                        ChatMessage(
+                            role="user",
+                            content=(
+                                f"You are attending a project coordination meeting as {manager.display_name}, "
+                                f"manager of {manager.department}. Review the current evidence and contribute "
+                                f"concrete coordination decisions. Do not invent facts.\\n"
+                                f"Project: {project.name}\\nProject brief: {project.brief[:3000]}\\n"
+                                f"Department work packages:\\n{brief}\\n"
+                                "Identify blockers, dependencies on other departments, and specific next actions."
+                            ),
+                        ),
+                    ],
+                    schema_cls=ManagerContribution,
+                    task_id=trigger_task_id,
+                    agent_id=manager.id,
+                )
+                return {
+                    "department": manager.department,
+                    "manager_id": manager.id,
+                    "manager_name": manager.display_name,
+                    "position": result.summary,
+                    "blockers": result.blockers,
+                    "coordination_requests": result.coordination_requests,
+                    "proposed_actions": result.proposed_actions,
+                    "source": "manager_model",
+                }
+            except Exception as exc:
+                return {
+                    "department": manager.department,
+                    "manager_id": manager.id,
+                    "manager_name": manager.display_name,
+                    "position": next((d["position"] for d in discussion if d["department"] == manager.department), "No department update."),
+                    "blockers": [],
+                    "coordination_requests": [],
+                    "proposed_actions": [],
+                    "source": "evidence_fallback",
+                    "error": str(exc)[:300],
+                }
+
+        if attendee_agents:
+            import asyncio
+            contributions = await asyncio.gather(*(manager_contribution(manager) for manager in attendee_agents[:6]))
+            discussion.extend(contributions)
+
+        # The CEO consolidates manager contributions into a short decision log.
+        if ceo and discussion:
+            try:
+                synthesis = await llm_router.execute_structured(
+                    tier=ceo.model_tier,
+                    messages=[
+                        ChatMessage(role="system", content=ceo.system_prompt),
+                        ChatMessage(
+                            role="user",
+                            content=(
+                                f"Chair the coordination meeting for {project.name}. "
+                                "Synthesize only evidence-backed decisions. Each decision needs an accountable department, "
+                                "an action, and a task ID when one exists.\\n"
+                                f"Manager discussion: {discussion}\\n"
+                                f"Existing blocker/revision actions: {decisions}"
+                            ),
+                        ),
+                    ],
+                    schema_cls=MeetingSynthesis,
+                    task_id=trigger_task_id,
+                    agent_id=ceo.id,
+                )
+                if synthesis.decisions:
+                    decisions = [{
+                        "decision": item.decision,
+                        "action": item.action,
+                        "task_id": item.task_id,
+                        "task_title": next((task.title for task in tasks if task.id == item.task_id), None),
+                        "owner_department": item.owner_department,
+                        "accountable_manager_id": item.accountable_manager_id,
+                        "status": "open",
+                    } for item in synthesis.decisions]
+                discussion.append({
+                    "department": "Executive office",
+                    "manager_id": ceo.id,
+                    "position": synthesis.executive_summary,
+                    "source": "ceo_synthesis",
+                })
+            except Exception:
+                # Keep the deterministic decision log if the synthesis model fails.
+                pass
 
         meeting = CompanyMeeting(
             id=generate_id("mtg"),
