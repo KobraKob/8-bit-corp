@@ -98,8 +98,9 @@ export const OfficeControlPanel: React.FC = () => {
             </select>
             <div className="grid grid-cols-2 gap-2">
               {visibleEmployees.map((agent) => {
-                const active = events.find((event) => event.agent_id === agent.id && ['agent.thinking', 'agent.tool_call', 'task.review_requested', 'task.started', 'task.blocked'].includes(event.type));
-                const status = active?.type === 'agent.thinking' ? 'Thinking' : active?.type === 'task.review_requested' ? 'Reviewing' : active?.type === 'task.blocked' ? 'Blocked' : active ? 'Working' : 'Idle';
+                const active = events.find((event) => event.agent_id === agent.id);
+                const fresh = active && Date.now() - new Date(active.ts).getTime() < 120000;
+                const status = !fresh ? 'Idle' : active.type === 'agent.thinking' ? 'Thinking' : active.type === 'task.review_requested' || active.type === 'task.submitted' ? 'Reviewing' : active.type === 'task.blocked' || active.type === 'task.failed' ? 'Blocked' : active.type === 'task.done' || active.type === 'task.approved' ? 'Idle' : active.type === 'agent.tool_call' || active.type === 'task.started' ? 'Working' : 'Idle';
                 return <button key={agent.id} onClick={() => setActorId(agent.id)} className={`rounded-lg border p-2 text-left ${actorId === agent.id ? 'border-cyan-500/70 bg-cyan-500/10' : 'border-slate-800 bg-slate-900/70'}`}>
                   <div className="truncate text-xs font-medium">{agent.display_name}</div><div className="mt-1 truncate text-[10px] text-slate-500">{agent.department}</div>
                   <div className="mt-2 flex items-center gap-1.5 text-[10px]"><span className={`h-1.5 w-1.5 rounded-full ${status === 'Blocked' ? 'bg-rose-400' : status === 'Idle' ? 'bg-slate-500' : 'bg-emerald-400'}`} />{status}</div>
@@ -152,7 +153,7 @@ export const OfficeControlPanel: React.FC = () => {
               <div className="mt-1 text-[10px] text-slate-500">{new Date(selectedEvent.ts).toLocaleString()}</div>
             </div> : <div className="rounded-lg border border-slate-800 p-3 text-xs text-slate-500">No office events yet.</div>}
             <input aria-label="Timeline event" type="range" min={0} max={Math.max(0, chronologicalEvents.length - 1)} value={Math.min(timelineIndex, Math.max(0, chronologicalEvents.length - 1))} onChange={(e) => setTimelineIndex(Number(e.target.value))} className="w-full accent-cyan-400" />
-            <div className="flex gap-2"><button disabled={!selectedEvent} onClick={() => replay(timelineIndex)} className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-cyan-500 px-3 py-2 text-xs font-semibold text-slate-950 disabled:opacity-40"><Play size={13} /> Replay event</button><button onClick={() => { setTimelineIndex(Math.max(0, chronologicalEvents.length - 1)); setReplayEvent(chronologicalEvents.at(-1)?.id || null); }} className="rounded-lg border border-slate-700 px-3 py-2 text-xs text-slate-300">Latest</button></div>
+            <div className="flex gap-2"><button disabled={!selectedEvent} onClick={() => replay(timelineIndex)} className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-cyan-500 px-3 py-2 text-xs font-semibold text-slate-950 disabled:opacity-40"><Play size={13} /> Replay event</button><button onClick={() => { setTimelineIndex(Math.max(0, chronologicalEvents.length - 1)); setReplayEvent(chronologicalEvents[chronologicalEvents.length - 1]?.id || null); }} className="rounded-lg border border-slate-700 px-3 py-2 text-xs text-slate-300">Latest</button></div>
             <div className="max-h-48 space-y-1 overflow-y-auto">{chronologicalEvents.slice(-30).reverse().map((event, index) => <button key={event.id} onClick={() => replay(chronologicalEvents.length - 1 - index)} className={`w-full rounded-md px-2 py-2 text-left text-[10px] ${replayEventId === event.id ? 'bg-cyan-500/10 text-cyan-200' : 'text-slate-400 hover:bg-slate-900'}`}><span className="mr-2 text-slate-600">#{event.id}</span>{eventLabel(event)}</button>)}</div>
           </div>
         )}
